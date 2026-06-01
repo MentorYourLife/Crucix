@@ -418,6 +418,11 @@ app.get('/zh', (req, res) => {
   res.sendFile(join(ROOT, 'dashboard/public/cuitian.html'));
 });
 
+// ☯ 靜觀 · 八字命理分析頁面
+app.get('/bazi', (req, res) => {
+  res.sendFile(join(ROOT, 'dashboard/public/bazi.html'));
+});
+
 // 根目錄直接安全導向中文版儀表板
 app.get('/', (req, res) => res.redirect('/zh'));
 

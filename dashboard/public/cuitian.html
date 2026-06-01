@@ -535,6 +535,7 @@ function renderTopbar(){
     </div>
     <div style="display:flex;align-items:center;gap:7px">
       ${urgent>0?`<div class="alert-badge">⚠ ${urgent}條緊急情報</div>`:''}
+      <button class="ibtn" style="border-color:rgba(192,132,252,.4);color:var(--accent);background:rgba(192,132,252,.08)" onclick="window.open('/bazi','_blank')">☯ 靜觀八字</button>
       <button class="ibtn musk" onclick="openMusk()">🚀 馬斯克視角</button>
       <button class="ibtn" onclick="openLine()">💬 LINE設定</button>
       <button class="ibtn" onclick="openGL()">信號解讀</button>
