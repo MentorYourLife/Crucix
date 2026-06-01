@@ -334,11 +334,20 @@
 
 <div class="tooltip" id="tooltip"></div>
 
+<script src="bazi_engine_core.js"></script>
 <script>
-  // -- UI Logic Scaffold --
-  // We will integrate the actual engine logic in the next step.
-  
+  let baziData = null;
+
   function bootOS() {
+    const y = document.getElementById('i_y').value;
+    const m = document.getElementById('i_m').value;
+    const d = document.getElementById('i_d').value;
+    const h = document.getElementById('i_h').value;
+    const g = document.getElementById('i_g').value;
+    
+    // Call the core engine
+    baziData = calculateBaziEngine(y, m, d, h, g);
+    
     gsap.to('#inputPhase', {opacity: 0, duration: 1, onComplete: () => {
       document.getElementById('inputPhase').style.display = 'none';
       document.getElementById('osDashboard').style.display = 'block';
@@ -350,17 +359,53 @@
       gsap.from('#l3_system', {x: 50, opacity: 0, duration: 1, delay: 0.6});
       gsap.from('#l6_timeline', {y: 50, opacity: 0, duration: 1, delay: 0.7});
       
-      // Mock calculations for visual demo
-      setTimeout(renderMockRadar, 1000);
-      
-      gsap.to('#bar_temp', {width: '80%', duration: 1.5, delay: 1});
-      document.getElementById('txt_temp').innerHTML = '<span style="color:var(--red)">WARNING: HIGH TEMP</span><br>需癸水散熱';
-      
-      gsap.to('#bar_med', {width: '60%', duration: 1.5, delay: 1.2});
-      document.getElementById('txt_med').innerHTML = '原局病重藥輕，需行運補給';
+      renderOS(baziData);
     }});
   }
   
+  function renderOS(data) {
+    // L1: Pillars
+    document.getElementById('gz_year').innerText = data.yearStem + data.yearBranch;
+    document.getElementById('gz_month').innerText = data.monthStem + data.monthBranch;
+    document.getElementById('gz_day').innerText = data.dayStem + data.dayBranch;
+    document.getElementById('gz_hour').innerText = data.hourStem + data.hourBranch;
+    
+    // L1: Holograms (mocked logic based on branches for now)
+    document.getElementById('taiyuan').innerText = `胎元: [計算中...]`;
+    document.getElementById('minggong').innerText = `命宮: [計算中...]`;
+    document.getElementById('badge_pattern').innerText = data.dayMasterState === '旺' ? '極限輸出強勢格局' : '順勢造局謀略家';
+    
+    // L2: Radar
+    renderRadar(data);
+    
+    // L3: Temp & Med
+    const tempScore = data.wuxingCount['火'] * 20; // simplified
+    document.getElementById('bar_temp').style.width = Math.min(tempScore, 100) + '%';
+    document.getElementById('txt_temp').innerHTML = data.tiaohouAdvice;
+    
+    const medScore = data.strengthDesc.includes('強') ? 70 : 30;
+    document.getElementById('bar_med').style.width = medScore + '%';
+    document.getElementById('txt_med').innerHTML = `日主${data.strengthDesc}，系統承載力: ${medScore}%`;
+    
+    // L5: Laser Connections (Mock rendering logic)
+    renderLasers(data.relationships);
+  }
+  
+  function renderLasers(rels) {
+    const svg = document.getElementById('laserCanvas');
+    svg.innerHTML = ''; // clear
+    if(!rels || rels.length === 0) return;
+    
+    // Add simple mock line to represent collision
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", "30%"); line.setAttribute("y1", "50%");
+    line.setAttribute("x2", "70%"); line.setAttribute("y2", "50%");
+    line.setAttribute("stroke", "rgba(248,113,113,0.6)");
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("stroke-dasharray", "5,5");
+    svg.appendChild(line);
+  }
+
   // Draggable Timeline
   let currentYear = 2026;
   if(typeof Draggable !== 'undefined') {
@@ -387,8 +432,7 @@
     });
   }
   
-  // Mock Radar Chart using Canvas (To be replaced with D3 or real logic)
-  function renderMockRadar() {
+  function renderRadar(data) {
     const canvas = document.getElementById('radarCanvas');
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
@@ -406,12 +450,23 @@
     ctx.strokeStyle = 'rgba(34,211,238,0.2)';
     ctx.stroke();
     
+    // Calculate simple stats based on Wuxing as proxy for Shishen for now
+    // In full implementation, we will map exact Shishen counts.
+    const maxWx = Math.max(...Object.values(data.wuxingCount), 1);
+    const radarData = [
+      data.wuxingCount['木']/maxWx, 
+      data.wuxingCount['火']/maxWx, 
+      data.wuxingCount['土']/maxWx, 
+      data.wuxingCount['金']/maxWx, 
+      data.wuxingCount['水']/maxWx, 
+      (data.wuxingCount['木']+data.wuxingCount['火'])/(maxWx*2)
+    ].map(v => v || 0.1);
+    
     // Draw data hex
-    const data = [0.8, 0.4, 0.9, 0.2, 0.6, 0.7]; // Mock values
     ctx.beginPath();
     for(let i=0; i<6; i++) {
       let a = (Math.PI*2/6)*i - Math.PI/2;
-      let dr = r * data[i];
+      let dr = r * radarData[i];
       ctx.lineTo(cx + dr*Math.cos(a), cy + dr*Math.sin(a));
     }
     ctx.closePath();
