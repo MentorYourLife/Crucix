@@ -143,6 +143,36 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .chong-tag.xing{border-color:rgba(251,191,36,.4);color:var(--gold);background:rgba(251,191,36,.06)}
 .chong-tag.hai{border-color:rgba(251,146,60,.4);color:var(--orange);background:rgba(251,146,60,.06)}
 
+/* DAYUN 大運 */
+.dayun-track{display:flex;gap:0;overflow-x:auto;padding-bottom:8px;margin-bottom:16px}
+.dayun-track::-webkit-scrollbar{height:4px}
+.dayun-track::-webkit-scrollbar-thumb{background:rgba(192,132,252,.2);border-radius:2px}
+.dayun-step{min-width:90px;padding:10px 8px;text-align:center;border:1px solid var(--border);
+  background:rgba(6,14,26,.6);position:relative;flex-shrink:0;transition:all .2s}
+.dayun-step:hover{border-color:var(--accent);background:rgba(192,132,252,.06)}
+.dayun-step.active{border-color:var(--gold);background:rgba(251,191,36,.06);box-shadow:0 0 12px rgba(251,191,36,.15)}
+.dayun-step .dy-age{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:.05em;margin-bottom:6px}
+.dayun-step .dy-gz{font-size:22px;font-weight:600;line-height:1.2}
+.dayun-step .dy-nayin{font-family:var(--mono);font-size:8px;color:var(--gold);margin-top:4px}
+.dayun-step .dy-el{font-family:var(--mono);font-size:8px;margin-top:2px}
+.dayun-step .dy-ss{font-family:var(--mono);font-size:9px;margin-top:4px;padding:2px 6px;border:1px solid;display:inline-block}
+.dayun-connector{position:absolute;right:-1px;top:50%;width:8px;height:1px;background:var(--border)}
+
+/* SHISHEN OVERVIEW 十神總覽 */
+.ss-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+@media(max-width:600px){.ss-grid{grid-template-columns:repeat(3,1fr)}}
+.ss-cell{padding:8px 6px;text-align:center;border:1px solid var(--border);background:rgba(255,255,255,.02);transition:all .2s}
+.ss-cell:hover{border-color:var(--accent);background:rgba(192,132,252,.04)}
+.ss-cell .ss-name{font-family:var(--mono);font-size:10px;font-weight:600;margin-bottom:4px}
+.ss-cell .ss-count{font-size:18px;font-weight:700}
+.ss-cell .ss-cat{font-family:var(--mono);font-size:8px;color:var(--dim);margin-top:2px}
+
+/* WUXING ALERT 五行缺失 */
+.wx-alert{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:16px;
+  border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.04);font-size:12px;line-height:1.6}
+.wx-alert.danger{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.04)}
+.wx-alert-icon{font-size:20px;flex-shrink:0}
+
 /* RESULT HIDDEN */
 #result{display:none}
 
@@ -231,7 +261,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
         <h3>五行統計 · 能量分佈</h3>
         <span class="badge">五行</span>
       </div>
+      <div id="wuxingAlert"></div>
       <div class="wuxing-grid" id="wuxingGrid"></div>
+    </div>
+
+    <!-- 十神總覽 -->
+    <div class="panel">
+      <div class="sh">
+        <h3>十神總覽 · 能量矩陣</h3>
+        <span class="badge">十神</span>
+      </div>
+      <div class="ss-grid" id="ssGrid"></div>
+    </div>
+
+    <!-- 大運排盤 -->
+    <div class="panel" id="dayunPanel" style="display:none">
+      <div class="sh">
+        <h3>大運排盤 · 十年運程</h3>
+        <span class="badge" id="dayunBadge">大運</span>
+      </div>
+      <div class="dayun-track" id="dayunTrack"></div>
     </div>
 
     <!-- Analysis Cards -->
@@ -598,15 +647,7 @@ function calculate(){
   const hourStem = STEMS[hourStemIdx];
   
   // ═══ 納音 ═══
-  function getJiaziIdx(stem, branch){
-    const si = STEMS.indexOf(stem);
-    const bi = BRANCHES.indexOf(branch);
-    // 六十甲子序號
-    for(let i=0;i<60;i++){
-      if(i%10===si && i%12===bi) return i;
-    }
-    return 0;
-  }
+  // getJiaziIdx() 已在全域定義
   const yearNayin = SIXTY_JIAZI[getJiaziIdx(yearStem,yearBranch)].nayin;
   const monthNayin = SIXTY_JIAZI[getJiaziIdx(monthStem,monthBranch)].nayin;
   const dayNayin = SIXTY_JIAZI[getJiaziIdx(dayStem,dayBranch)].nayin;
@@ -894,10 +935,151 @@ function calculate(){
   gsap.from('.wx-item', {opacity:0, scale:0.8, stagger:0.1, duration:0.5, ease:'power2.out', delay:0.6});
   gsap.from('.analysis-card', {opacity:0, y:20, stagger:0.1, duration:0.5, ease:'power2.out', delay:0.9});
   
+  // ═══ 五行缺失/過旺提示 ═══
+  const alertEl = document.getElementById('wuxingAlert');
+  let alertsHtml = '';
+  const missing = ['木','火','土','金','水'].filter(e=>wuxingCount[e]===0);
+  const excess = ['木','火','土','金','水'].filter(e=>wuxingCount[e]>=6);
+  if(missing.length>0){
+    alertsHtml += `<div class="wx-alert danger">
+      <span class="wx-alert-icon">⚠️</span>
+      <div>命局<strong>缺${missing.join('、')}</strong>！五行不全，${missing.map(e=>{
+        const tips={'木':'宜取木名、居東方、穿青綠色','火':'宜取火名、居南方、穿紅色','土':'宜居中央、穿黃棕色','金':'宜取金名、居西方、穿白色','水':'宜取水名、居北方、穿黑藍色'};
+        return tips[e];
+      }).join('；')}</div>
+    </div>`;
+  }
+  if(excess.length>0){
+    alertsHtml += `<div class="wx-alert">
+      <span class="wx-alert-icon">💡</span>
+      <div>${excess.map(e=>`<strong style="color:${getElementColor(e)}">${e}</strong>行過旺（${wuxingCount[e]}）`).join('，')}，宜洩不宜剋</div>
+    </div>`;
+  }
+  alertEl.innerHTML = alertsHtml;
+  
+  // ═══ 十神總覽 ═══
+  const ssAll = {};
+  const ssNames = ['比肩','劫財','食神','傷官','偏財','正財','七殺','正官','偏印','正印'];
+  ssNames.forEach(n=>ssAll[n]=0);
+  // 天干十神
+  [yearStem,monthStem,hourStem].forEach(s=>{
+    const ss = getShiShen(dayMaster,s);
+    if(ss && ssAll[ss]!==undefined) ssAll[ss]++;
+  });
+  // 藏干十神
+  [yearBranch,monthBranch,dayBranch,hourBranch].forEach(b=>{
+    HIDDEN_STEMS[b].forEach(h=>{
+      const ss = getShiShen(dayMaster,h);
+      if(ss && ssAll[ss]!==undefined) ssAll[ss]+=0.5;
+    });
+  });
+  const ssCatColor = {'比肩':'var(--accent)','劫財':'var(--accent)','食神':'var(--wood)','傷官':'var(--wood)',
+    '偏財':'var(--earth)','正財':'var(--earth)','七殺':'var(--fire)','正官':'var(--fire)',
+    '偏印':'var(--water)','正印':'var(--water)'};
+  const ssCatName = {'比肩':'比劫','劫財':'比劫','食神':'食傷','傷官':'食傷',
+    '偏財':'財星','正財':'財星','七殺':'官殺','正官':'官殺','偏印':'印星','正印':'印星'};
+  document.getElementById('ssGrid').innerHTML = ssNames.map(n=>{
+    const c = ssAll[n];
+    return `<div class="ss-cell">
+      <div class="ss-name" style="color:${ssCatColor[n]}">${n}</div>
+      <div class="ss-count" style="color:${c>0?ssCatColor[n]:'var(--dim)'}">${c}</div>
+      <div class="ss-cat">${ssCatName[n]}</div>
+    </div>`;
+  }).join('');
+  
+  // ═══ 大運排盤 ═══
+  const dayunPanel = document.getElementById('dayunPanel');
+  const dayunTrack = document.getElementById('dayunTrack');
+  // 大運起運：男命陽年順排、女命陽年逆排；男命陰年逆排、女命陰年順排
+  const yearStemYY = STEM_YINYANG[yearStem];
+  const isYangYear = yearStemYY === '陽';
+  const isMale = gender === 'male';
+  const isForward = (isMale && isYangYear) || (!isMale && !isYangYear);
+  
+  // 起運歲數（簡化：約3歲一步近似）
+  // 精確計算需要出生日到下一個節/上一個節的天數÷3，這裡用節氣近似
+  let startAge = 3; // 簡化近似
+  const monthJieDate = getMonthByJieqi(calcYear, calcMonth, calcDay);
+  // 近似：距離下一節或上一節天數÷3
+  const bdDate = new Date(year, month-1, day);
+  let daysToJie = 0;
+  const yStr2 = String(calcYear);
+  const jieOrder2 = ['小寒','立春','驚蟄','清明','立夏','芒種','小暑','立秋','白露','寒露','立冬','大雪'];
+  if(isForward){
+    // 順行：找下一個節
+    for(const jn of jieOrder2){
+      if(JIEQI_TABLE[jn] && JIEQI_TABLE[jn][yStr2]){
+        const jd = parseJieqiDate(JIEQI_TABLE[jn][yStr2], calcYear);
+        if(jd > bdDate){ daysToJie = Math.ceil((jd-bdDate)/(86400000)); break; }
+      }
+    }
+  } else {
+    // 逆行：找上一個節
+    for(let k=jieOrder2.length-1;k>=0;k--){
+      const jn = jieOrder2[k];
+      if(JIEQI_TABLE[jn] && JIEQI_TABLE[jn][yStr2]){
+        const jd = parseJieqiDate(JIEQI_TABLE[jn][yStr2], calcYear);
+        if(jd <= bdDate){ daysToJie = Math.ceil((bdDate-jd)/(86400000)); break; }
+      }
+    }
+  }
+  startAge = Math.max(1, Math.round(daysToJie / 3));
+  if(startAge > 10) startAge = startAge % 10 || 3;
+  
+  // 排10步大運
+  let dayunSteps = [];
+  const monthJiaziIdx = getJiaziIdx(monthStem, monthBranch);
+  const currentAge = new Date().getFullYear() - year;
+  
+  for(let step=1; step<=10; step++){
+    let offset = isForward ? step : -step;
+    let idx = ((monthJiaziIdx + offset) % 60 + 60) % 60;
+    const gz = SIXTY_JIAZI[idx];
+    const ageStart = startAge + (step-1)*10;
+    const ageEnd = ageStart + 9;
+    const dyYearStart = year + ageStart;
+    const dyYearEnd = year + ageEnd;
+    const dyStem = gz.gz[0];
+    const dyBranch = gz.gz[1];
+    const dySS = getShiShen(dayMaster, dyStem);
+    const isActive = currentAge >= ageStart && currentAge <= ageEnd;
+    dayunSteps.push({gz:gz.gz, nayin:gz.nayin, stem:dyStem, branch:dyBranch, ss:dySS,
+      ageStart, ageEnd, dyYearStart, dyYearEnd, isActive});
+  }
+  
+  dayunTrack.innerHTML = dayunSteps.map((d,i)=>{
+    const stemEl = STEM_ELEMENT[d.stem];
+    const branchEl = BRANCH_ELEMENT[d.branch];
+    const ssCol = ssCatColor[d.ss] || 'var(--dim)';
+    return `<div class="dayun-step ${d.isActive?'active':''}">
+      <div class="dy-age">${d.ageStart}-${d.ageEnd}歲</div>
+      <div class="dy-gz"><span style="color:${getElementColor(stemEl)}">${d.stem}</span><span style="color:${getElementColor(branchEl)}">${d.branch}</span></div>
+      <div class="dy-nayin">${d.nayin}</div>
+      <div class="dy-el" style="color:var(--dim)">${d.dyYearStart}-${d.dyYearEnd}</div>
+      <div class="dy-ss" style="border-color:${ssCol}40;color:${ssCol}">${d.ss}</div>
+      ${i<9?'<div class="dayun-connector"></div>':''}
+    </div>`;
+  }).join('');
+  dayunPanel.style.display = 'block';
+  document.getElementById('dayunBadge').textContent = `${isForward?'順行':'逆行'} · 起運${startAge}歲`;
+  
+  gsap.from('.dayun-step', {opacity:0, y:15, stagger:0.08, duration:0.4, ease:'power2.out', delay:0.7});
+  gsap.from('.ss-cell', {opacity:0, scale:0.9, stagger:0.05, duration:0.3, ease:'power2.out', delay:0.8});
+  
   // Scroll to result
   setTimeout(()=>{
     document.getElementById('result').scrollIntoView({behavior:'smooth',block:'start'});
   }, 200);
+}
+
+// ── 納音查找輔助（用於大運） ──
+function getJiaziIdx(stem, branch){
+  const si = STEMS.indexOf(stem);
+  const bi = BRANCHES.indexOf(branch);
+  for(let i=0;i<60;i++){
+    if(i%10===si && i%12===bi) return i;
+  }
+  return 0;
 }
 
 // ── 空亡計算 ──
@@ -973,6 +1155,13 @@ function showCurrentJieqi(){
   }
   setTimeout(next, 400);
 })();
+
+// ── 頁面載入後自動排範例盤 ──
+setTimeout(()=>{
+  if(document.getElementById('result').style.display!=='block'){
+    calculate();
+  }
+}, 3200);
 </script>
 </body>
 </html>
