@@ -9,7 +9,7 @@ export default {
 
   llm: {
     provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
-    apiKey: process.env.LLM_API_KEY || null,
+    apiKey: process.env.LLM_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || null,
     model: process.env.LLM_MODEL || null,
     baseUrl: process.env.OLLAMA_BASE_URL || null,
   },
