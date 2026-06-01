@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>淬天情報中心 v2 — 全球即時情報系統</title>
+<meta name="description" content="淬天計畫旗下全球情報監控中心，涵蓋衝突、能源、核輻射、OSINT情報流等29個即時資料源">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://d3js.org/topojson.v3.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#010308;
+  --panel:rgba(4,10,20,0.92);
+  --glass:rgba(6,14,26,0.7);
+  --border:rgba(180,120,255,0.12);
+  --border-hi:rgba(180,120,255,0.35);
+  --text:#e8e0ff;
+  --dim:#7a6a9a;
+  --accent:#c084fc;
+  --accent2:#818cf8;
+  --gold:#fbbf24;
+  --red:#f87171;
+  --green:#34d399;
+  --orange:#fb923c;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'Inter','Noto Sans TC','IBM Plex Mono',sans-serif;
+  --green-vivid:#00ff88;
+  --red-vivid:#ff4466;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:hidden}
+.bg-mesh{position:fixed;inset:0;pointer-events:none;opacity:.65;
+  background:radial-gradient(ellipse at 15% 10%,rgba(120,40,200,.14),transparent 50%),
+    radial-gradient(ellipse at 85% 85%,rgba(40,80,200,.09),transparent 50%)}
+.bg-grid{position:fixed;inset:0;pointer-events:none;opacity:.35;
+  background-image:linear-gradient(rgba(180,120,255,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(180,120,255,.04) 1px,transparent 1px);
+  background-size:50px 50px}
+.scan{position:fixed;inset:0;pointer-events:none;overflow:hidden;opacity:.25}
+.scan::after{content:'';position:absolute;left:0;width:100%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(192,132,252,.2),transparent);
+  animation:scanMove 7s linear infinite}
+@keyframes scanMove{0%{top:-1px}100%{top:100%}}
+
+/* BOOT */
+#boot{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg)}
+.br{width:96px;height:96px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;position:relative}
+.br::before{content:'';position:absolute;inset:-7px;border-radius:50%;border:1px solid transparent;border-top-color:var(--accent);animation:sp 1.5s linear infinite}
+.br::after{content:'';position:absolute;inset:-15px;border-radius:50%;border:1px solid transparent;border-bottom-color:rgba(180,120,255,.3);animation:sp 2.8s linear infinite reverse}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bt{font-size:13px;font-weight:700;letter-spacing:.3em;color:var(--accent);font-family:var(--mono)}
+#bm{margin-top:24px;font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.09em;text-align:center;line-height:2.1}
+#bm .ok{color:var(--accent)}
+#bf{margin-top:20px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.18em;opacity:0}
+
+/* MAIN */
+#main{opacity:0;min-height:100vh;padding:10px}
+
+/* TOPBAR */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;
+  border:1px solid var(--border);background:var(--panel);backdrop-filter:blur(20px);flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.brand{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:.15em;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.regime-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.07em;border:1px solid rgba(248,113,113,.3);color:#fecaca;background:rgba(248,113,113,.08)}
+.rdot{width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);animation:bl 1.5s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.2}}
+.pills{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.pill{font-family:var(--mono);font-size:10px;color:var(--dim);padding:4px 9px;border:1px solid var(--border);letter-spacing:.05em}
+.pill .v{color:var(--text);font-weight:600}
+.alert-badge{padding:4px 10px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.09em;
+  border:1px solid rgba(248,113,113,.4);background:linear-gradient(135deg,rgba(248,113,113,.18),rgba(248,113,113,.06));
+  color:#fca5a5;animation:ap 2s ease-in-out infinite}
+@keyframes ap{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0)}50%{box-shadow:0 0 12px rgba(248,113,113,.25)}}
+.ibtn{padding:4px 9px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  border:1px solid rgba(129,140,248,.3);color:var(--accent2);background:rgba(129,140,248,.06);cursor:pointer;transition:all .2s}
+.ibtn:hover{border-color:var(--accent2);background:rgba(129,140,248,.14)}
+.ibtn.musk{border-color:rgba(251,191,36,.3);color:var(--gold);background:rgba(251,191,36,.06)}
+.ibtn.musk:hover{background:rgba(251,191,36,.14)}
+
+/* MAIN GRID */
+.grid{display:grid;grid-template-columns:210px 1fr 310px;gap:10px;min-height:calc(100vh - 90px)}
+.col{display:flex;flex-direction:column;gap:10px}
+.panel{border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(16px);padding:12px;position:relative;overflow:hidden}
+.panel::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(192,132,252,.2),transparent)}
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sh h3{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.17em;text-transform:uppercase;color:var(--dim)}
+.badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border:1px solid var(--border);color:var(--accent)}
+.live-badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border:1px solid rgba(52,211,153,.3);
+  color:var(--green);background:rgba(52,211,153,.06);animation:lp 2s ease infinite}
+@keyframes lp{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* SENSORS */
+.sensor{display:flex;align-items:center;justify-content:space-between;padding:7px 8px;
+  border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.02);margin-bottom:4px;cursor:pointer;transition:all .2s}
+.sensor:hover{border-color:var(--border-hi);background:rgba(192,132,252,.06)}
+.sdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.s-name{font-size:12px;font-weight:500}
+.s-sub{font-size:9px;color:var(--dim);margin-top:1px}
+.s-val{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent)}
+
+/* NUKE */
+.nuke-ok{padding:6px 8px;border:1px solid rgba(52,211,153,.2);background:rgba(52,211,153,.04);
+  font-family:var(--mono);font-size:9px;color:var(--green);letter-spacing:.1em;margin-bottom:8px}
+.nuke-row{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-size:10px;display:flex;justify-content:space-between;align-items:center}
+.nuke-val{font-family:var(--mono);font-size:10px;color:var(--accent)}
+
+/* MAP */
+.tabs{display:flex;gap:5px;padding:8px 12px;border:1px solid var(--border);background:var(--panel);backdrop-filter:blur(20px);flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:rgba(255,255,255,.02);color:var(--dim);
+  font-family:var(--mono);font-size:10px;padding:5px 11px;letter-spacing:.07em;cursor:pointer;transition:all .2s}
+.tab:hover{border-color:var(--accent);color:var(--text)}
+.tab.a{color:#0a0414;background:var(--accent);border-color:var(--accent)}
+.map-wrap{flex:1;min-height:460px;border:1px solid var(--border);
+  background:radial-gradient(ellipse at center,rgba(8,4,20,1),rgba(1,3,8,1));position:relative;overflow:hidden}
+#mapSvg{width:100%;height:100%;cursor:grab}
+#mapSvg:active{cursor:grabbing}
+#mapSvg .land{fill:rgba(160,180,200,.07);stroke:rgba(200,210,220,.12);stroke-width:.4}
+#mapSvg .graticule{fill:none;stroke:rgba(180,120,255,.04);stroke-width:.3}
+.map-leg{position:absolute;bottom:10px;left:12px;display:flex;gap:10px;
+  font-family:var(--mono);font-size:9px;color:var(--dim);flex-wrap:wrap;z-index:5}
+.leg-i{display:flex;align-items:center;gap:4px}
+.leg-d{width:7px;height:7px;border-radius:50%}
+.map-hint{position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:8px;color:var(--dim);opacity:.5;letter-spacing:.05em}
+
+/* SIGNALS */
+.sig{padding:8px 10px;border-left:2px solid rgba(192,132,252,.3);margin-bottom:4px;background:rgba(255,255,255,.02)}
+.sig.d{border-left-color:var(--red)}
+.sig.w{border-left-color:var(--orange)}
+.sig-n{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:.1em;margin-bottom:3px;display:block}
+.sig-t{font-size:10px;line-height:1.45;color:#d8c8f0}
+
+/* FEED */
+.feed{flex:1;overflow-y:auto;max-height:calc(100vh - 160px)}
+.feed::-webkit-scrollbar{width:3px}
+.feed::-webkit-scrollbar-thumb{background:rgba(192,132,252,.2);border-radius:2px}
+.fi{padding:9px 10px;border:1px solid rgba(255,255,255,.05);border-left:2px solid rgba(129,140,248,.4);background:rgba(255,255,255,.02);margin-bottom:5px}
+.fi.u{border-left-color:var(--red)}
+.fi-ch{font-family:var(--mono);font-size:9px;font-weight:600;color:var(--accent);letter-spacing:.07em;display:flex;justify-content:space-between;margin-bottom:3px}
+.fi-fl{color:var(--orange);font-weight:700;padding:1px 4px;border:1px solid rgba(251,146,60,.3);background:rgba(251,146,60,.08)}
+.fi-t{font-size:10px;line-height:1.45;color:#c8b8e8}
+.fi-m{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px}
+
+/* MUSK PANEL */
+.musk-panel{border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04)}
+.musk-panel::before{background:linear-gradient(90deg,transparent,rgba(251,191,36,.15),transparent)}
+.musk-q{font-size:11px;line-height:1.6;color:#fef3c7;font-style:italic;padding:8px;
+  border-left:2px solid var(--gold);background:rgba(251,191,36,.04);margin-bottom:8px}
+.musk-q cite{display:block;font-size:9px;font-family:var(--mono);color:var(--gold);margin-top:4px;font-style:normal}
+.musk-analysis{font-size:10px;line-height:1.55;color:var(--dim)}
+
+/* LOWER */
+.lower{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+
+/* TICKER */
+.ticker-wrap{overflow:hidden;max-height:240px;position:relative;border:1px solid rgba(192,132,252,.08);background:rgba(0,0,0,.1)}
+.ticker-wrap::before,.ticker-wrap::after{content:'';position:absolute;left:0;right:0;height:26px;z-index:2;pointer-events:none}
+.ticker-wrap::before{top:0;background:linear-gradient(to bottom,rgba(6,14,26,.95),transparent)}
+.ticker-wrap::after{bottom:0;background:linear-gradient(to top,rgba(6,14,26,.95),transparent)}
+.tick-track{display:flex;flex-direction:column;animation:tickScroll var(--dur,32s) linear infinite}
+.ticker-wrap:hover .tick-track{animation-play-state:paused}
+@keyframes tickScroll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}
+.tk{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.03)}
+.tk.u{border-left:2px solid var(--red)}
+.tk-src{font-family:var(--mono);font-size:8px;letter-spacing:.06em;padding:1px 5px;border:1px solid;display:inline-block;margin-right:4px}
+.tk-t{font-size:10px;line-height:1.35;color:#c8b8e8;margin-top:3px}
+.tk-m{font-family:var(--mono);font-size:8px;color:var(--dim);margin-top:2px}
+
+/* MARKET */
+.mkt-tabs{display:flex;gap:5px;margin-bottom:8px}
+.mkt-tab{font-family:var(--mono);font-size:9px;padding:3px 8px;border:1px solid var(--border);color:var(--dim);cursor:pointer;transition:all .2s}
+.mkt-tab.a{color:var(--accent);border-color:var(--accent);background:rgba(192,132,252,.08)}
+.mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px}
+.mkt-card{
+  padding:10px 10px 8px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.025);
+  position:relative;overflow:hidden;
+  transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,border-color .22s ease;
+  cursor:default;
+}
+.mkt-card:hover{
+  transform:translateY(-3px);
+  border-color:rgba(192,132,252,.35);
+  box-shadow:0 6px 24px rgba(192,132,252,.18),0 0 0 1px rgba(192,132,252,.1);
+}
+.mkt-card.flash-up{animation:flashUp .6s ease forwards}
+.mkt-card.flash-dn{animation:flashDn .6s ease forwards}
+@keyframes flashUp{0%{background:rgba(0,255,136,.18)}100%{background:rgba(255,255,255,.025)}}
+@keyframes flashDn{0%{background:rgba(255,68,102,.18)}100%{background:rgba(255,255,255,.025)}}
+.mkt-lbl{font-family:var(--mono);font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}
+.mkt-val{font-family:var(--mono);font-size:16px;font-weight:700;margin-top:4px;display:block}
+.mkt-chg{font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px;letter-spacing:.02em}
+.up{color:var(--green-vivid)}
+.dn{color:var(--red-vivid)}
+.mkt-bar{height:2px;margin-top:6px;background:rgba(255,255,255,.06);border-radius:1px;overflow:hidden}
+.mkt-bar span{display:block;height:100%;border-radius:1px}
+
+/* IDEAS – glassmorphism upgrade */
+.idea{
+  padding:10px 11px;
+  border:1px solid rgba(192,132,252,.15);
+  background:rgba(8,4,22,.55);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  margin-bottom:6px;
+  position:relative;
+  overflow:hidden;
+  transition:border-color .2s,box-shadow .2s;
+}
+.idea::before{
+  content:'';
+  position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(192,132,252,.25),transparent);
+}
+.idea:hover{border-color:rgba(192,132,252,.35);box-shadow:0 4px 20px rgba(192,132,252,.1)}
+.idea-type{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.12em;padding:2px 7px;border:1px solid;display:inline-block;margin-bottom:5px;border-radius:2px}
+.idea-type.long{color:#00ff88;border-color:rgba(0,255,136,.45);background:rgba(0,255,136,.08);text-shadow:0 0 8px rgba(0,255,136,.5)}
+.idea-type.short{color:#ff4466;border-color:rgba(255,68,102,.45);background:rgba(255,68,102,.08);text-shadow:0 0 8px rgba(255,68,102,.5)}
+.idea-type.hedge{color:#c084fc;border-color:rgba(192,132,252,.5);background:rgba(192,132,252,.1);text-shadow:0 0 8px rgba(192,132,252,.5)}
+.idea-type.watch{color:#fbbf24;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08);text-shadow:0 0 8px rgba(251,191,36,.4)}
+.idea-type.avoid{color:#9ca3af;border-color:rgba(156,163,175,.3);background:rgba(156,163,175,.06)}
+.idea-t{font-size:11px;font-weight:600;margin-bottom:3px}
+.idea-b{font-size:9px;line-height:1.5;color:var(--dim)}
+.idea-conf{display:flex;align-items:center;gap:3px;margin-top:5px}
+.conf-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.15);flex-shrink:0}
+.conf-dot.on.high{background:#00ff88;box-shadow:0 0 5px rgba(0,255,136,.7)}
+.conf-dot.on.medium{background:#fbbf24;box-shadow:0 0 5px rgba(251,191,36,.7)}
+.conf-dot.on.low{background:#ff4466;box-shadow:0 0 5px rgba(255,68,102,.7)}
+.idea-meta{font-family:var(--mono);font-size:8px;color:var(--dim);margin-top:4px;display:flex;justify-content:space-between;align-items:center}
+
+/* SOURCES */
+.src-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.src-item{display:flex;align-items:center;gap:5px;padding:4px 6px;border:1px solid rgba(255,255,255,.04);font-size:9px;font-family:var(--mono)}
+.sd{width:5px;height:5px;border-radius:50%}
+.sd.ok{background:var(--green);box-shadow:0 0 4px rgba(52,211,153,.5)}
+.sd.err{background:var(--red);box-shadow:0 0 4px rgba(248,113,113,.5)}
+
+/* POPUP */
+.popup{position:fixed;z-index:500;width:260px;padding:12px;
+  background:rgba(4,8,16,.97);border:1px solid var(--border-hi);backdrop-filter:blur(12px);
+  box-shadow:0 8px 32px rgba(0,0,0,.5);display:none}
+.popup.show{display:block}
+.pp-h{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--accent);letter-spacing:.07em;margin-bottom:4px}
+.pp-b{font-size:10px;line-height:1.45;color:#c8b8e8}
+.pp-m{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:5px}
+.pp-x{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--dim);font-size:14px;cursor:pointer}
+
+/* GLOSSARY */
+.gl-ov{position:fixed;inset:0;z-index:1200;background:rgba(1,3,8,.75);backdrop-filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .25s}
+.gl-ov.show{opacity:1;pointer-events:auto}
+.gl-pan{position:absolute;top:18px;right:18px;width:min(400px,calc(100vw - 32px));
+  max-height:calc(100vh - 36px);display:flex;flex-direction:column;
+  border:1px solid rgba(129,140,248,.25);background:rgba(4,8,18,.97);box-shadow:0 18px 48px rgba(0,0,0,.5)}
+.gl-head{padding:14px 16px 10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.gl-kick{font-family:var(--mono);font-size:9px;letter-spacing:.15em;color:var(--accent2);margin-bottom:5px}
+.gl-title{font-size:17px;font-weight:600}
+.gl-sub{font-size:10px;color:var(--dim);margin-top:5px;line-height:1.5}
+.gl-close{position:absolute;top:12px;right:14px;background:none;border:1px solid var(--border);color:var(--dim);width:28px;height:28px;font-size:16px;cursor:pointer}
+.gl-body{overflow:auto;padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px}
+.gl-card{padding:11px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02)}
+.gl-term{font-family:var(--mono);font-size:10px;letter-spacing:.07em;color:var(--accent);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.gl-line{font-size:10px;line-height:1.55;color:#c8b8e8}
+.gl-foot{padding:10px 16px;border-top:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:8px;line-height:1.5;color:rgba(120,100,150,.7)}
+
+/* LINE SETUP OVERLAY */
+.line-ov{position:fixed;inset:0;z-index:1200;background:rgba(1,3,8,.8);backdrop-filter:blur(12px);opacity:0;pointer-events:none;transition:opacity .25s;display:flex;align-items:center;justify-content:center}
+.line-ov.show{opacity:1;pointer-events:auto}
+.line-pan{width:min(560px,calc(100vw - 32px));max-height:90vh;overflow-y:auto;
+  border:1px solid rgba(52,211,153,.25);background:rgba(4,8,18,.98);padding:24px}
+.line-step{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.line-num{width:28px;height:28px;border-radius:50%;border:1px solid rgba(52,211,153,.4);
+  color:var(--green);font-family:var(--mono);font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.line-cnt h4{font-size:12px;font-weight:600;margin-bottom:4px}
+.line-cnt p{font-size:10px;line-height:1.6;color:var(--dim)}
+.line-cnt a{color:var(--accent2);text-decoration:none}
+.line-code{font-family:var(--mono);font-size:10px;padding:6px 10px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.1);color:var(--green);margin-top:6px;word-break:break-all}
+
+.wm{position:fixed;bottom:12px;right:14px;font-family:var(--mono);font-size:8px;color:rgba(180,120,255,.15);letter-spacing:.1em;pointer-events:none;z-index:1}
+
+/* TOPBAR extras */
+.hb-dot{width:8px;height:8px;border-radius:50%;background:#00ff88;box-shadow:0 0 0 0 rgba(0,255,136,.6);animation:heartbeat 2s ease-in-out infinite;flex-shrink:0}
+@keyframes heartbeat{
+  0%{box-shadow:0 0 0 0 rgba(0,255,136,.6)}
+  35%{box-shadow:0 0 0 7px rgba(0,255,136,0)}
+  70%{box-shadow:0 0 0 0 rgba(0,255,136,0)}
+  100%{box-shadow:0 0 0 0 rgba(0,255,136,.6)}
+}
+.topbar-countdown{font-family:var(--mono);font-size:10px;color:var(--dim);padding:3px 8px;border:1px solid var(--border);letter-spacing:.05em;display:flex;align-items:center;gap:5px}
+.topbar-countdown .cv{color:var(--accent);font-weight:600}
+.computex-badge{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.08em;padding:3px 9px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:var(--gold);animation:computexGlow 3s ease-in-out infinite}
+@keyframes computexGlow{0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}50%{box-shadow:0 0 10px rgba(251,191,36,.3)}}
+
+@media(max-width:1200px){.grid{grid-template-columns:200px 1fr 280px}}
+@media(max-width:900px){.grid{display:flex;flex-direction:column}.mkt-grid{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div class="bg-grid"></div>
+<div class="scan"></div>
+
+<div id="boot">
+  <div class="br"><span class="bt">淬天</span></div>
+  <div id="bm"></div>
+  <div id="bf">情報系統啟動完成</div>
+</div>
+
+<div id="main">
+  <div class="topbar" id="topbar"></div>
+  <div class="grid">
+    <div class="col" id="leftCol"></div>
+    <div class="col" id="centerCol">
+      <div class="tabs" id="mapTabs"></div>
+      <div class="map-wrap" id="mapWrap">
+        <svg id="mapSvg"></svg>
+        <div class="map-leg" id="mapLeg"></div>
+        <div class="map-hint">滾輪縮放 · 拖曳平移</div>
+      </div>
+      <div class="lower" id="lowerGrid"></div>
+    </div>
+    <div class="col" id="rightCol"></div>
+  </div>
+</div>
+
+<!-- POPUP -->
+<div class="popup" id="popup">
+  <button class="pp-x" onclick="closePopup()">×</button>
+  <div class="pp-h" id="ppH"></div>
+  <div class="pp-b" id="ppB"></div>
+  <div class="pp-m" id="ppM"></div>
+</div>
+
+<!-- 信號解讀 -->
+<div class="gl-ov" id="glOv" onclick="if(event.target===this)closeGL()">
+  <div class="gl-pan">
+    <div class="gl-head">
+      <div class="gl-kick">信號解讀指南</div>
+      <div class="gl-title">各項指標的實際含義</div>
+      <div class="gl-sub">這些是解讀框架，而非結論。重要判斷需交叉驗證多個資料層。</div>
+      <button class="gl-close" onclick="closeGL()">×</button>
+    </div>
+    <div class="gl-body" id="glBody"></div>
+    <div class="gl-foot">☯ 淬天計畫 · CTS-LHY13 · 淬天錄-LHY-v13</div>
+  </div>
+</div>
+
+<!-- LINE 設定指南 -->
+<div class="line-ov" id="lineOv" onclick="if(event.target===this)closeLine()">
+  <div class="line-pan">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--green);letter-spacing:.15em;margin-bottom:4px">LINE BOT 設定指南</div>
+        <div style="font-size:16px;font-weight:600">三步驟接通 LINE 推播</div>
+      </div>
+      <button class="gl-close" onclick="closeLine()">×</button>
+    </div>
+
+    <div class="line-step">
+      <div class="line-num">1</div>
+      <div class="line-cnt">
+        <h4>建立 LINE 開發者帳號 + 頻道</h4>
+        <p>前往 <a href="https://developers.line.biz/console/" target="_blank">developers.line.biz/console</a>，用你的 LINE 帳號登入。<br>
+        建立 Provider → 建立「Messaging API」頻道 → 隨便取個名字</p>
+      </div>
+    </div>
+
+    <div class="line-step">
+      <div class="line-num">2</div>
+      <div class="line-cnt">
+        <h4>取得金鑰並填入 .env</h4>
+        <p>「Basic settings」→ 複製 <strong>Channel Secret</strong><br>
+        「Messaging API」→ Issue <strong>Channel access token (長期)</strong><br>
+        加你的官方帳號好友 → 在「Messaging API」掃 QR 碼取得 User ID<br>
+        （或訊息第一條會有你的 ID）</p>
+        <div class="line-code">
+          LINE_CHANNEL_SECRET=你的Channel Secret<br>
+          LINE_CHANNEL_ACCESS_TOKEN=你的Token<br>
+          LINE_USER_ID=你的User ID
+        </div>
+      </div>
+    </div>
+
+    <div class="line-step">
+      <div class="line-num">3</div>
+      <div class="line-cnt">
+        <h4>用 Cloudflare Tunnel 建立公開連結（免費）</h4>
+        <p>Crucix 需要一個公開的 HTTPS 網址讓 LINE 確認 Webhook。<br>
+        下載 <a href="https://github.com/cloudflare/cloudflared/releases" target="_blank">cloudflared</a>，放到 C:\Windows 下，然後執行：</p>
+        <div class="line-code">cloudflared tunnel --url http://localhost:3117</div>
+        <p style="margin-top:6px">複製輸出的 <strong>https://xxx.trycloudflare.com</strong><br>
+        填到 LINE Developer Console → Webhook URL：</p>
+        <div class="line-code">https://xxx.trycloudflare.com/line/webhook</div>
+        <p style="margin-top:6px">重啟 Crucix 伺服器，LINE Bot 就上線了！✓</p>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04)">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--gold);letter-spacing:.1em;margin-bottom:6px">可用指令</div>
+      <div style="font-size:10px;line-height:1.8;color:var(--dim)">
+        傳給你的 LINE Bot：<br>
+        <span style="color:var(--green);font-family:var(--mono)">/status</span> — 查看系統狀態<br>
+        <span style="color:var(--green);font-family:var(--mono)">/brief</span> — 當前情報摘要<br>
+        <span style="color:var(--green);font-family:var(--mono)">/sweep</span> — 立即觸發情報掃描<br>
+        自動推播：緊急情報、油價突破、VIX飆高、AI策略建議
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wm">淬天計畫 · CTS-LHY13 · 淬天錄-LHY-v13</div>
+
+<script>
+let D = null;
+
+// === 資料處理工具 ===
+function getAge(s){
+  if(!s) return '';
+  const d=new Date(s); if(isNaN(d)) return '';
+  const t=(Date.now()-d)/1000;
+  if(t<60) return Math.floor(t)+'秒前';
+  if(t<3600) return Math.floor(t/60)+'分前';
+  if(t<86400) return Math.floor(t/3600)+'小時前';
+  return Math.floor(t/86400)+'天前';
+}
+function num(n,d=0){if(n==null||isNaN(n))return '--';return Number(n).toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function pct(n){if(n==null||isNaN(n))return '--';const v=Number(n);return(v>=0?'+':'')+v.toFixed(2)+'%'}
+function dotColor(t){return{air:'#64f0c8',thermal:'#f87171',sdr:'#818cf8',maritime:'#c084fc',nuke:'#fbbf24',health:'#34d399',news:'#7dd3fc',osint:'#fb923c',space:'#e879f9',conflict:'#fb923c'}[t]||'#9ca3af'}
+
+function translateSignal(s){
+  return s
+    .replace('HIGH INTENSITY FIRES in ','🔥 高強度火源 ——')
+    .replace('ELEVATED NIGHT ACTIVITY in ','🌙 異常夜間活動 ——')
+    .replace(/(\d+) detections >10MW FRP/,'$1個高強度偵測(>10MW)')
+    .replace(/(\d+) night detections \(potential strikes\/combat\)/,'$1次夜間偵測(疑似打擊)')
+}
+
+// === UI ===
+function showPopup(e,head,body,meta){
+  const p=document.getElementById('popup');
+  document.getElementById('ppH').textContent=head||'';
+  document.getElementById('ppB').innerHTML=body||'';
+  document.getElementById('ppM').textContent=meta||'';
+  let x=e.clientX+14,y=e.clientY-10;
+  if(x+270>window.innerWidth) x=e.clientX-280;
+  if(y+180>window.innerHeight) y=e.clientY-190;
+  p.style.left=x+'px'; p.style.top=y+'px';
+  p.classList.add('show');
+}
+function closePopup(){document.getElementById('popup').classList.remove('show')}
+document.addEventListener('click',e=>{if(!e.target.closest('.popup')&&!e.target.closest('.sensor'))closePopup()});
+
+const GL_DATA=[
+  {term:'衛星熱點 (FIRMS)',tag:'NASA衛星',desc:'紅外線熱源偵測。>10MW FRP + 夜間高密度 = 可能為砲擊/飛彈攻擊。單點不構成結論，需交叉OSINT。'},
+  {term:'飛航活動 (ADS-B)',tag:'OpenSky',desc:'ADS-B即時航班追蹤。無呼號(No callsign)比例高或異常高空活動，可能為軍事偵察或加油機任務。'},
+  {term:'開源情報 (OSINT)',tag:'Telegram',desc:'Telegram軍事頻道即時訊息。標注missile/strike/coup等關鍵詞的訊文為「緊急」。注意：部分訊源存在資訊戰風險。'},
+  {term:'核輻射 (Safecast)',tag:'公民科學',desc:'輻射計數率(CPM)。正常：20-50。>100顯著異常。>200立即警戒。目前監控：扎波羅熱、福島等重點設施。'},
+  {term:'VIX 恐慌指數',tag:'市場',desc:'<15 平靜 | 15-25 一般 | >25 高恐慌 | >40 極端危機（2020疫情水位）'},
+  {term:'WTI/布倫特原油',tag:'能源',desc:'>$80 高油價 | >$100 通常反映重大地緣風險溢價 | 布倫特-WTI價差擴大 = 供應鏈分裂信號'},
+  {term:'10Y-2Y 殖利率曲線',tag:'美債',desc:'>0 = 正常 | <0 = 倒掛（歷史上6-18個月內衰退機率升高）| 目前重新正常化 = 衰退信號減弱'},
+];
+function openGL(){
+  document.getElementById('glBody').innerHTML=GL_DATA.map(g=>`
+    <div class="gl-card">
+      <div class="gl-term"><strong>${g.term}</strong>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:.06em">${g.tag}</span></div>
+      <div class="gl-desc">${g.desc}</div>
+    </div>`).join('');
+  document.getElementById('glOv').classList.add('show');
+}
+// 倒計時顯示
+let _topbarTimer=null;
+function startTopbarCountdowns(){
+  if(_topbarTimer) clearInterval(_topbarTimer);
+  _topbarTimer=setInterval(updateTopbarCountdowns,1000);
+  updateTopbarCountdowns();
+}
+function updateTopbarCountdowns(){
+  // Next sweep countdown
+  const nsEl=document.getElementById('nextSweepVal');
+  if(nsEl){
+    const ns=D?.meta?.nextSweepAt;
+    if(ns){
+      const diff=Math.max(0,Math.floor((new Date(ns)-Date.now())/1000));
+      const m=Math.floor(diff/60),s=diff%60;
+      nsEl.textContent=`${m}:${String(s).padStart(2,'0')}`;
+    } else {nsEl.textContent='--';}
+  }
+  // COMPUTEX countdown (starts 2026-06-02 09:00 UTC+8)
+  const cxEl=document.getElementById('computexVal');
+  if(cxEl){
+    const target=new Date('2026-06-02T01:00:00Z'); // 09:00 CST = 01:00 UTC
+    const diff=Math.max(0,Math.floor((target-Date.now())/1000));
+    if(diff===0){cxEl.textContent='🎉 進行中';}
+    else{
+      const d=Math.floor(diff/86400),h=Math.floor((diff%86400)/3600),m=Math.floor((diff%3600)/60),s=diff%60;
+      cxEl.textContent=d>0?`${d}天${h}小時${m}分`:`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+  }
+}
+function renderTopbar(){
+  const m=D?.meta||{};
+  const vix=D?.fred?.find(f=>f.id==='VIXCLS');
+  const wti=D?.energy?.wti;
+  const gold=D?.metals?.gold;
+  const urgent=D?.tg?.urgent?.length||0;
+  let regime='正常監控',danger=false;
+  if(urgent>5||(wti&&wti>100)){regime='戰時滯脹風險';danger=true}
+  else if(vix&&vix.value>25){regime='市場高度警戒';danger=true}
+  document.getElementById('topbar').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="brand">☯ 淬天情報中心</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="hb-dot" title="SSE 連線中"></div>
+        <span style="font-family:var(--mono);font-size:9px;color:rgba(0,255,136,.7);letter-spacing:.06em">LIVE</span>
+      </div>
+      ${danger?`<div class="regime-chip"><span class="rdot"></span>${regime}</div>`:''}
+    </div>
+    <div class="pills">
+      <div class="pill">視覺 <span class="v">全開</span></div>
+      <div class="pill">掃描 <span class="v">${m.totalDurationMs?Math.round(m.totalDurationMs/1000)+'秒':'--'}</span></div>
+      <div class="pill">情報源 <span class="v">${m.sourcesOk||'--'}/${m.sourcesQueried||29}</span></div>
+      ${vix?`<div class="pill">VIX <span class="v" style="color:${vix.value>25?'var(--red-vivid)':'var(--green-vivid)'}">${num(vix.value,1)}</span></div>`:''}
+      ${wti?`<div class="pill">WTI <span class="v">$${num(wti,0)}</span></div>`:''}
+      ${gold?`<div class="pill">黃金 <span class="v" style="color:var(--gold)">$${num(gold,0)}</span></div>`:''}
+      <div class="topbar-countdown" title="下次掃描倒計時">⏱ <span class="cv" id="nextSweepVal">--</span></div>
+      <div class="computex-badge" title="COMPUTEX 2026 倒數">🖥 COMPUTEX <span id="computexVal">--</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:7px">
+      ${urgent>0?`<div class="alert-badge">⚠ ${urgent}條緊急情報</div>`:''}
+      <button class="ibtn musk" onclick="openMusk()">🚀 馬斯克視角</button>
+      <button class="ibtn" onclick="openLine()">💬 LINE設定</button>
+      <button class="ibtn" onclick="openGL()">信號解讀</button>
+    </div>`;
+  startTopbarCountdowns();
+
+// 馬斯克分身 overlay
+function openMusk(){
+  const q=MUSK_QUOTES[Math.floor(Math.random()*MUSK_QUOTES.length)];
+  const analysis=getMuskAnalysis(D);
+  const div=document.createElement('div');
+  div.style.cssText='position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(1,3,8,.8);backdrop-filter:blur(12px)';
+  div.onclick=e=>{if(e.target===div)div.remove()};
+  div.innerHTML=`
+    <div style="width:min(480px,calc(100vw - 32px));border:1px solid rgba(251,191,36,.3);background:rgba(4,8,18,.98);padding:24px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--gold);letter-spacing:.2em;margin-bottom:12px">🚀 馬斯克分身 · 第一性原理分析</div>
+      <div style="font-size:13px;line-height:1.7;color:#fef3c7;font-style:italic;padding:12px;border-left:2px solid var(--gold);background:rgba(251,191,36,.04);margin-bottom:14px">
+        「${q.q}」<cite style="display:block;font-size:9px;font-family:var(--mono);color:var(--gold);margin-top:6px;font-style:normal">— Elon Musk · ${q.ctx}</cite>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--gold);letter-spacing:.1em;margin-bottom:8px">當前情報分析</div>
+      <div style="font-size:10px;line-height:1.7;color:var(--dim);white-space:pre-line">${analysis}</div>
+      <div style="margin-top:16px;padding:10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:6px">越域模型建議 (本地執行)</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--green)">
+          ollama run dolphin-llama3:8b<br>
+          ollama run huihui_ai/qwen2.5-abliterate:14b
+        </div>
+      </div>
+      <button onclick="this.closest('div[style]').remove()" style="margin-top:14px;width:100%;padding:8px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.06);color:var(--gold);font-family:var(--mono);font-size:10px;cursor:pointer">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+// === LEFT RAIL ===
+function renderLeft(){
+  const sensors=[
+    {type:'air',    name:'飛航活動', val:num(D?.air?.reduce((s,a)=>s+a.total,0)||0), sub:`${D?.air?.length||0}個熱區`},
+    {type:'thermal',name:'衛星熱點', val:num(D?.thermal?.reduce((s,t)=>s+t.det,0)||0), sub:'個偵測點'},
+    {type:'sdr',    name:'無線電監控',val:num(D?.sdr?.online||0), sub:'個接收站'},
+    {type:'maritime',name:'海事要道', val:D?.chokepoints?.length||0, sub:'航運咽喉'},
+    {type:'nuke',   name:'核設施',   val:D?.nuke?.length||0, sub:'輻射監控站'},
+    {type:'conflict',name:'衝突事件',val:num(D?.acled?.totalEvents||0), sub:'本週記錄'},
+    {type:'health', name:'衛生警示', val:D?.who?.length||0, sub:'WHO通報'},
+    {type:'news',   name:'全球新聞', val:D?.news?.length||0, sub:'即時訊源'},
+    {type:'osint',  name:'開源情報', val:num(D?.tg?.posts||0), sub:'條電報'},
+    {type:'space',  name:'太空活動', val:num(D?.space?.totalNewObjects||0), sub:'新目標'},
+  ];
+  const nukeOK=D?.nuke?.every(n=>!n.anom);
+  document.getElementById('leftCol').innerHTML=`
+    <div class="panel">
+      <div class="sh"><h3>感測器面板</h3><span class="live-badge">即時</span></div>
+      ${sensors.map(s=>`
+        <div class="sensor" onclick="showSensorPopup('${s.type}',event)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="sdot" style="background:${dotColor(s.type)};box-shadow:0 0 6px ${dotColor(s.type)}55"></div>
+            <div><div class="s-name">${s.name}</div><div class="s-sub">${s.val} ${s.sub}</div></div>
+          </div>
+          <div class="s-val">${s.val}</div>
+        </div>`).join('')}
+    </div>
+    <div class="panel">
+      <div class="sh"><h3>☢ 核輻射監控</h3><span class="badge">輻射</span></div>
+      ${nukeOK?'<div class="nuke-ok">✓ 所有監控站點輻射值正常</div>':''}
+      ${(D?.nuke||[]).filter(n=>n.cpm).slice(0,5).map(n=>`
+        <div class="nuke-row">
+          <span>${n.site.replace(' (Ukraine)','').replace(' Exclusion Zone','').replace(' Daiichi','').replace(' NPP','')}</span>
+          <span class="nuke-val">${num(n.cpm,1)} CPM</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+function showSensorPopup(type,e){
+  const info={
+    air:{h:'飛航活動',b:D?.air?.map(a=>`${a.region}：${a.total}架`).join('<br>')||'',m:'資料源：OpenSky ADS-B'},
+    thermal:{h:'衛星熱點偵測',b:`全球偵測 ${D?.thermal?.reduce((s,t)=>s+t.det,0)||0} 個熱源`,m:'資料源：NASA FIRMS衛星'},
+    sdr:{h:'無線電監控',b:`全球 ${D?.sdr?.online||0} 個接收站上線`,m:'資料源：KiwiSDR網路'},
+    maritime:{h:'海事咽喉要道',b:(D?.chokepoints||[]).map(c=>`${c.label}：${c.note}`).join('<br>')||'',m:'全球9大航運要道'},
+    nuke:{h:'核設施監控',b:(D?.nuke||[]).map(n=>`${n.site}：${n.cpm?num(n.cpm,1)+' CPM':'無資料'}`).join('<br>')||'',m:'資料源：Safecast'},
+    space:{h:'太空活動',b:`新目標：${D?.space?.totalNewObjects||0}<br>軍事衛星：${D?.space?.militarySats||0}<br>Starlink：${D?.space?.constellations?.starlink||0}`,m:'資料源：CelesTrak'},
+  };
+  const i=info[type]||{h:type,b:'',m:''};
+  showPopup(e,i.h,i.b,i.m);
+}
+
+// === MAP ===
+let mapG=null,flatZoom=null;
+const regionBounds={
+  world:[[-180,-60],[180,80]],americas:[[-130,10],[-60,55]],
+  europe:[[-12,34],[45,72]],middleEast:[[24,10],[65,45]],
+  asiaPacific:[[60,-12],[180,55]],africa:[[-20,-36],[55,38]]
+};
+const regionNames={world:'全球',americas:'美洲',europe:'歐洲',middleEast:'中東',asiaPacific:'亞太',africa:'非洲'};
+
+function renderMapTabs(){
+  document.getElementById('mapTabs').innerHTML=Object.entries(regionNames).map(([k,v])=>
+    `<button class="tab${k==='world'?' a':''}" onclick="setRegion('${k}',this)">${v}</button>`).join('');
+}
+function setRegion(key,btn){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('a'));
+  btn.classList.add('a');
+  if(!flatZoom||!mapG) return;
+  const b=regionBounds[key];
+  const c=document.getElementById('mapWrap');
+  const w=c.clientWidth,h=c.clientHeight||460;
+  const proj=d3.geoNaturalEarth1().fitSize([w,h],{type:'Sphere'}).translate([w/2,h/2]);
+  const p0=proj([b[0][0],b[1][1]]),p1=proj([b[1][0],b[0][1]]);
+  const sc=Math.min(w/(p1[0]-p0[0]),h/(p1[1]-p0[1]))*.85;
+  const tx=w/2-(p0[0]+p1[0])/2*sc,ty=h/2-(p0[1]+p1[1])/2*sc;
+  d3.select('#mapSvg').transition().duration(750).call(flatZoom.transform,d3.zoomIdentity.translate(tx,ty).scale(sc));
+}
+
+function renderMap(){
+  const svg=d3.select('#mapSvg');
+  const c=document.getElementById('mapWrap');
+  const w=c.clientWidth,h=c.clientHeight||460;
+  svg.attr('viewBox',`0 0 ${w} ${h}`);
+  const proj=d3.geoNaturalEarth1().fitSize([w-20,h-20],{type:'Sphere'}).translate([w/2,h/2]);
+  const path=d3.geoPath(proj);
+  flatZoom=d3.zoom().scaleExtent([.8,20]).on('zoom',e=>{mapG.attr('transform',e.transform)});
+  svg.call(flatZoom);
+  mapG=svg.append('g');
+  mapG.append('path').datum(d3.geoGraticule()()).attr('class','graticule').attr('d',path);
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+    .then(r=>r.json()).then(world=>{
+      mapG.selectAll('path.land').data(topojson.feature(world,world.objects.countries).features).enter()
+        .append('path').attr('class','land').attr('d',path);
+      plotMarkers(proj);
+    }).catch(()=>plotMarkers(proj));
+  document.getElementById('mapLeg').innerHTML=[
+    {c:'#64f0c8',l:'飛航'},{c:'#f87171',l:'熱源'},{c:'#c084fc',l:'海事要道'},
+    {c:'#fbbf24',l:'核設施'},{c:'#818cf8',l:'無線電'},{c:'#fb923c',l:'OSINT'},
+    {c:'#7dd3fc',l:'新聞'},{c:'#e879f9',l:'太空'},
+  ].map(i=>`<span class="leg-i"><span class="leg-d" style="background:${i.c}"></span>${i.l}</span>`).join('');
+}
+
+function plotMarkers(proj){
+  function add(lat,lon,r,fill,popup){
+    const[x,y]=proj([lon,lat]);if(!x||!y)return;
+    const g=mapG.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer');
+    if(popup) g.on('click',e=>{e.stopPropagation();showPopup(e,popup.h,popup.b,popup.m)});
+    g.append('circle').attr('r',r).attr('fill',fill).attr('stroke','rgba(255,255,255,.2)').attr('stroke-width',.5)
+      .on('mouseover',function(){d3.select(this).attr('r',r*1.5)}).on('mouseout',function(){d3.select(this).attr('r',r)});
+  }
+  const ac=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
+  D?.air?.forEach((a,i)=>{const c=ac[i];if(!c)return;add(c.lat,c.lon,3+a.total/80,'rgba(100,240,200,.8)',{h:a.region,b:`${a.total}架飛機追蹤<br>無呼號：${a.noCallsign}`,m:'OpenSky ADS-B'})});
+  D?.thermal?.forEach(t=>t.fires?.forEach(f=>add(f.lat,f.lon,2+Math.min(f.frp/60,4),'rgba(248,113,113,.7)',{h:'衛星熱源偵測',b:`區域：${t.region}<br>熱輻射：${f.frp.toFixed(1)} MW`,m:'NASA FIRMS'})));
+  D?.chokepoints?.forEach(cp=>{const[x,y]=proj([cp.lon,cp.lat]);if(!x||!y)return;
+    const g=mapG.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').on('click',e=>{e.stopPropagation();showPopup(e,cp.label,cp.note,'海事要道')});
+    g.append('rect').attr('x',-5).attr('y',-5).attr('width',10).attr('height',10).attr('fill','rgba(192,132,252,.8)').attr('transform','rotate(45)').attr('stroke','rgba(255,255,255,.2)').attr('stroke-width',.5)});
+  const nc=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31,lon:35.1}];
+  D?.nuke?.forEach((n,i)=>{const c=nc[i];if(!c)return;add(c.lat,c.lon,4,n.anom?'rgba(248,113,113,.9)':'rgba(251,191,36,.8)',{h:n.site,b:`狀態：${n.anom?'⚠ 異常':'✓ 正常'}<br>CPM：${n.cpm?.toFixed(1)||'無資料'}`,m:'Safecast'})});
+  D?.sdr?.zones?.forEach(z=>z.receivers?.forEach(r=>add(r.lat,r.lon,2,'rgba(129,140,248,.6)',{h:'無線電接收站',b:r.name.substring(0,60),m:`${z.region}·KiwiSDR`})));
+  const og=[{lat:45,lon:41,i:0},{lat:48,lon:37,i:1},{lat:48.5,lon:37.5,i:2},{lat:32,lon:53,i:3},{lat:31.5,lon:35,i:5}];
+  og.forEach(o=>{const p=D?.tg?.urgent?.[o.i];if(!p)return;add(o.lat,o.lon,4,'rgba(251,146,60,.85)',{h:(p.channel||'').toUpperCase(),b:(p.text||'').substring(0,160),m:`${p.views?.toLocaleString()||'?'}次瀏覽`})});
+  D?.news?.forEach(n=>add(n.lat,n.lon,2.5,'rgba(125,211,252,.65)',{h:n.source,b:n.title?.substring(0,100),m:`${n.region}·${getAge(n.date)}`}));
+  D?.space?.stationPositions?.forEach(s=>add(s.lat,s.lon,5,'rgba(255,255,255,.95)',{h:s.name,b:'軌道位置估算',m:'太空站'}));
+}
+
+// === RIGHT RAIL ===
+function renderRight(){
+  const signals=(D?.tSignals||[]).slice(0,8);
+  const urgent=(D?.tg?.urgent||[]).slice(0,10);
+  document.getElementById('rightCol').innerHTML=`
+    <div class="panel" style="max-height:320px;overflow:hidden">
+      <div class="sh"><h3>跨源信號</h3><span class="badge">全球視圖</span></div>
+      ${signals.map((s,i)=>`<div class="sig ${s.includes('HIGH')?'d':'w'}">
+        <span class="sig-n">信號 ${i+1}</span>
+        <div class="sig-t">${translateSignal(s)}</div>
+      </div>`).join('')||'<div style="font-size:10px;color:var(--dim)">暫無異常信號</div>'}
+    </div>
+    <div class="panel" style="flex:1">
+      <div class="sh"><h3>即時情報流 (OSINT)</h3>
+        <span class="badge" style="color:var(--red)">${D?.tg?.urgent?.length||0} 緊急</span>
+      </div>
+      <div class="feed">
+        ${urgent.map(p=>`<div class="fi u">
+          <div class="fi-ch">
+            <span>${(p.channel||'').toUpperCase()}</span>
+            ${p.urgentFlags?.length?`<span class="fi-fl">${p.urgentFlags[0].toUpperCase()}</span>`:''}
+          </div>
+          <div class="fi-t">${(p.text||'').substring(0,160)}</div>
+          <div class="fi-m">${p.views?.toLocaleString()||'?'}次瀏覽 · ${getAge(p.date)}</div>
+        </div>`).join('')||'<div style="font-size:10px;color:var(--dim)">載入中…</div>'}
+      </div>
+    </div>
+    <div class="panel musk-panel">
+      <div class="sh">
+        <h3>🚀 馬斯克分身分析</h3>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--gold);border:1px solid rgba(251,191,36,.3);padding:2px 6px">第一性原理</span>
+      </div>
+      <div class="musk-q" id="muskQuote"></div>
+      <div class="musk-analysis" id="muskAnalysis"></div>
+    </div>`;
+  // 填入馬斯克面板
+  const q=MUSK_QUOTES[Math.floor(Date.now()/60000)%MUSK_QUOTES.length];
+  document.getElementById('muskQuote').innerHTML=`「${q.q}」<cite>— Elon Musk · ${q.ctx}</cite>`;
+  document.getElementById('muskAnalysis').style.whiteSpace='pre-line';
+  document.getElementById('muskAnalysis').textContent=getMuskAnalysis(D);
+}
+
+// === LOWER PANELS ===
+let mktMode='crypto'; // crypto / tw / us
+function renderLower(){
+  const feed=(D?.newsFeed||D?.news||[]).slice(0,30);
+  const items=[...feed,...feed].map(n=>`
+    <div class="tk${n.urgent?' u':''}">
+      <div><span class="tk-src" style="color:#7dd3fc;border-color:rgba(125,211,252,.3)">${(n.source||'').toUpperCase().substring(0,6)}</span>${n.urgent?'<span style="color:var(--red);font-size:9px">⚡緊急</span>':''}</div>
+      <div class="tk-t">${(n.headline||n.title||'').substring(0,100)}</div>
+      <div class="tk-m">${n.region||''} · ${getAge(n.timestamp||n.date)}</div>
+    </div>`).join('');
+
+  const ideas=D?.ideas||[];
+  const typeMap={long:'多頭',short:'空頭',hedge:'對沖',watch:'觀察',avoid:'迴避'};
+
+  document.getElementById('lowerGrid').innerHTML=`
+    <div style="display:flex;gap:10px;width:100%;flex-wrap:wrap">
+      <div class="panel" style="flex:0 0 220px;min-width:180px;max-height:320px;overflow:hidden">
+        <div class="sh"><h3>情報流</h3><span class="badge">即時</span></div>
+        <div class="ticker-wrap" style="--dur:40s;height:260px;position:relative;overflow:hidden">
+          <div class="tick-track">${items}</div>
+        </div>
+      </div>
+
+      <div class="panel" style="flex:1;min-width:280px">
+        <div class="sh">
+          <h3>🌐 市場行情</h3>
+          <span class="live-badge">即時</span>
+        </div>
+        <div class="mkt-tabs">
+          <button class="mkt-tab" id="mktTabTw" onclick="setMktMode('tw',this)">🇹🇼 台股</button>
+          <button class="mkt-tab" id="mktTabUs" onclick="setMktMode('us',this)">🚀 美股</button>
+          <button class="mkt-tab a" id="mktTabCrypto" onclick="setMktMode('crypto',this)">₿ 加密</button>
+        </div>
+        <div class="mkt-grid" id="mktGrid">${renderMktCards()}</div>
+      </div>
+
+      <div class="panel" style="flex:0 0 260px;min-width:220px">
+        <div class="sh">
+          <h3>💡 交易構想</h3>
+          <span style="font-family:var(--mono);font-size:9px;padding:2px 6px;border:1px solid rgba(129,140,248,.3);color:var(--accent2)">${ideas.length} 個</span>
+        </div>
+        ${ideas.length?ideas.map(id=>{
+          const t=(id.type||'').toLowerCase();
+          const leftCol={long:'#00ff88',short:'#ff4466',hedge:'#c084fc',watch:'#fbbf24',avoid:'#6b7280'}[t]||'rgba(192,132,252,.3)';
+          const conf=(id.confidence||'').toUpperCase();
+          const dots=conf==='HIGH'?3:conf==='MEDIUM'?2:conf==='LOW'?1:0;
+          const dotClass=conf==='HIGH'?'high':conf==='MEDIUM'?'medium':'low';
+          return `<div class="idea" style="border-left:3px solid ${leftCol}">
+            <span class="idea-type ${t}">${typeMap[t]||id.type}</span>
+            ${id.ticker?`<span style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-left:6px">${id.ticker}</span>`:""}
+            <div class="idea-t">${id.title||""}</div>
+            <div class="idea-b">${(id.text||id.rationale||"").substring(0,130)}</div>
+            ${dots>0?`<div class="idea-conf">${Array.from({length:3},(_,ii)=>`<div class="conf-dot${ii<dots?" on "+dotClass:""}"></div>`).join("")}<span style="font-family:var(--mono);font-size:8px;color:var(--dim);margin-left:4px">${id.confidence}${id.horizon?" · "+id.horizon:""}</span></div>`:""}
+          </div>`;
+        }).join(''):'<div style="font-size:10px;color:var(--dim)">Ollama AI分析中…<br>請確認 Ollama 正在執行</div>'}
+      </div>
+    </div>
+    <div class="panel" style="width:100%;margin-top:10px">
+      <div class="sh"><h3>資料來源狀態</h3><span class="badge">${D?.meta?.sourcesOk||0}/${D?.meta?.sourcesQueried||29} 正常</span></div>
+      <div class="src-grid">
+        ${(D?.health||[]).slice(0,25).map(h=>`
+          <div class="src-item"><div class="sd ${h.err?'err':'ok'}"></div><span>${h.n}</span></div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function setMktMode(mode,btn){
+  mktMode=mode;
+  document.querySelectorAll('.mkt-tab').forEach(b=>b.classList.remove('a'));
+  btn.classList.add('a');
+  document.getElementById('mktGrid').innerHTML=renderMktCards();
+}
+
+function renderMktCards(){
+  if(!D) return '<div style="font-size:10px;color:var(--dim)">載入中…</div>';
+  const nameMap={
+    // 台股（yfinance 中文名稱對照）
+    '加權指數':'🇹🇼 加權指數',
+    '台積電':'台積電 2330',
+    '聯發科':'聯發科 2454',
+    '鴻海':'鴻海 2317',
+    '台達電':'台達電 2308',
+    // 美股科技
+    '特斯拉':'🚀 特斯拉 TSLA',
+    '輝達':'輝達 NVDA',
+    '蘋果':'蘋果 AAPL',
+    '微軟':'微軟 MSFT',
+    '亞馬遜':'亞馬遜 AMZN',
+    // 指數
+    'S&P 500':'S&P 500','Nasdaq Composite':'那斯達克','Dow Jones':'道瓊',
+    // 加密
+    'Bitcoin':'₿ BTC','Ethereum':'⬡ ETH','BNB':'BNB 🔥','Solana':'SOL',
+    'XRP':'XRP','Dogecoin':'DOGE','Worldcoin':'WLD',
+    // 商品
+    'Gold':'黃金','WTI Crude':'WTI原油','Brent Crude':'布倫特','Silver':'白銀','Natural Gas':'天然氣',
+  };
+
+  let cards=[];
+  if(mktMode==='crypto'){
+    cards=[
+      ...(D.markets?.crypto||[]),
+    ];
+  } else if(mktMode==='us'){
+    // 🚀 美股科技龍頭（TSLA, NVDA, AAPL, MSFT, AMZN）
+    cards=[...(D.markets?.usTech||[])];
+    if(!cards.length) cards=[...(D.markets?.indexes||[])].slice(0,5);
+  } else {
+    // 🇹🇼 台灣：^TWII, 2330.TW, 2454.TW, 2317.TW, 2308.TW
+    cards=[...(D.markets?.taiwan||[])];
+    if(!cards.length){
+      return '<div style="grid-column:1/-1;padding:10px;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04);font-family:var(--mono);font-size:9px;color:var(--gold)">台股資料載入中… 請等待下次掃描更新</div>';
+    }
+  }
+  return cards.map(m=>buildCard(m,nameMap)).join('')||'<div style="font-size:10px;color:var(--dim)">暫無資料</div>';
+}
+
+// countup animation helper
+function animateCountup(el,from,to,duration,fmt){
+  if(!el) return;
+  const start=performance.now();
+  function step(now){
+    const t=Math.min((now-start)/duration,1);
+    const ease=1-Math.pow(1-t,3); // ease-out cubic
+    el.textContent=fmt(from+(to-from)*ease);
+    if(t<1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+const _prevPrices={};
+function buildCard(m,nameMap){
+  const up=(m.changePct||0)>=0;
+  const bar=Math.min(Math.abs(m.changePct||0)*5,100);
+  const isTWD=(m.currency==='TWD')||(m.symbol&&(m.symbol.endsWith('.TW')||m.symbol==='^TWII'));
+  // Price formatting: TWD uses comma integers, USD uses decimals
+  function fmtPrice(p){
+    if(p==null||isNaN(p)) return '--';
+    if(isTWD) return Number(p).toLocaleString('zh-TW',{maximumFractionDigits:0});
+    if(p>=1000) return Number(p).toLocaleString('en-US',{maximumFractionDigits:0});
+    if(p>=10) return Number(p).toFixed(2);
+    return Number(p).toFixed(4);
+  }
+  // Determine flash class
+  const key=m.symbol||m.name;
+  const prevPrice=_prevPrices[key];
+  let flashCls='';
+  if(prevPrice!=null && m.price!=null && m.price!==prevPrice){
+    flashCls=m.price>prevPrice?'flash-up':'flash-dn';
+  }
+  if(m.price!=null) _prevPrices[key]=m.price;
+
+  // Area chart sparkline with gradient fill
+  function sparkline(hist){
+    if(!hist||hist.length<2) return '';
+    const vals=hist.map(h=>typeof h==='object'?h.close:h).filter(v=>v!=null&&!isNaN(v));
+    if(vals.length<2) return '';
+    const mn=Math.min(...vals),mx=Math.max(...vals);
+    const rng=mx-mn||1;
+    const W=100,H=28;
+    const uid='g'+Math.random().toString(36).slice(2,7);
+    const lineCol=up?'#00ff88':'#ff4466';
+    const fillColTop=up?'rgba(0,255,136,0.35)':'rgba(255,68,102,0.35)';
+    const fillColBot=up?'rgba(0,255,136,0)':'rgba(255,68,102,0)';
+    const points=vals.map((v,i)=>{
+      const x=(i/(vals.length-1))*W;
+      const y=H-((v-mn)/rng)*(H-2)-1;
+      return [x.toFixed(1),y.toFixed(1)];
+    });
+    const linePts=points.map(p=>p.join(',')).join(' ');
+    // area polygon: line + baseline
+    const areaPts=linePts+` ${W.toFixed(1)},${H} 0,${H}`;
+    return `<svg width="${W}" height="${H}" style="display:block;margin-top:4px;overflow:visible" viewBox="0 0 ${W} ${H}">
+      <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${lineCol}" stop-opacity=".35"/>
+        <stop offset="100%" stop-color="${lineCol}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="${areaPts}" fill="url(#${uid})" opacity=".8"/>
+      <polyline points="${linePts}" fill="none" stroke="${lineCol}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  const cardId='mkt-'+key.replace(/[^a-z0-9]/gi,'_');
+  return `<div class="mkt-card ${flashCls}" id="${cardId}" title="${m.symbol||''}">
+    <div class="mkt-lbl">${nameMap[m.name]||m.name}</div>
+    <span class="mkt-val" style="color:${up?'var(--green-vivid)':'var(--red-vivid)'};text-shadow:0 0 12px ${up?'rgba(0,255,136,.4)':'rgba(255,68,102,.4)'}">${fmtPrice(m.price)}</span>
+    <div class="mkt-chg ${up?'up':'dn'}" style="font-size:14px;font-weight:800">${pct(m.changePct)}${isTWD?' <span style="font-size:7px;opacity:.5;font-weight:400">TWD</span>':''}</div>
+    ${sparkline(m.history)}
+    <div class="mkt-bar" style="margin-top:3px"><span style="width:${bar}%;background:${up?'var(--green-vivid)':'var(--red-vivid)'};opacity:.8"></span></div>
+  </div>`;
+}
+
+// === BOOT ===
+async function boot(){
+  const msgs=[
+    ['連接淬天情報中樞…','ok'],
+    ['載入全球情報資料…','ok'],
+    ['初始化感測器矩陣…','ok'],
+    ['建立地圖渲染引擎…','ok'],
+    ['校準市場資料流…','ok'],
+    ['啟動馬斯克分身模組…','ok'],
+  ];
+  const el=document.getElementById('bm');
+  for(const[m,c] of msgs){
+    await new Promise(r=>setTimeout(r,300));
+    el.innerHTML+=`<div><span class="${c}">[ ${c.toUpperCase()} ]</span> ${m}</div>`;
+  }
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      const r = await fetch('/api/data');
+      if (r.ok) {
+        D = await r.json();
+        break;
+      }
+    } catch (e) {}
+    retries--;
+    if (retries > 0) {
+      el.innerHTML += `<div style="color:var(--orange)">[ 重試 ] 正在重新連接 Crucix 伺服器... (${5 - retries}/5)</div>`;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+  if (!D) {
+    el.innerHTML += '<div style="color:var(--red)">[ 警告 ] 無法連接 Crucix 伺服器。請確認伺服器已啟動或重試。</div>';
+    document.getElementById('bf').style.opacity = 1;
+    document.getElementById('bf').textContent = '⚠ 資料載入失敗';
+    return;
+  }
+  await new Promise(r=>setTimeout(r,300));
+  document.getElementById('bf').style.opacity=1;
+  await new Promise(r=>setTimeout(r,600));
+  gsap.to('#boot',{opacity:0,duration:.6,onComplete:()=>{
+    document.getElementById('boot').style.display='none';
+    document.getElementById('main').style.opacity=1;
+    renderAll();
+  }});
+  // SSE 即時更新
+  try{
+    const es=new EventSource('/events');
+    es.onmessage=e=>{
+      const msg=JSON.parse(e.data);
+      if(msg.type==='update'&&msg.data){D=msg.data;renderAll();}
+    };
+  }catch(e){}
+}
+
+function renderAll(){
+  renderTopbar();
+  renderLeft();
+  renderMapTabs();
+  renderMap();
+  renderRight();
+  renderLower();
+  // flash existing cards if prices changed (after DOM update)
+  setTimeout(()=>{
+    document.querySelectorAll('.mkt-card.flash-up,.mkt-card.flash-dn').forEach(el=>{
+      // re-trigger animation
+      const cls=el.classList.contains('flash-up')?'flash-up':'flash-dn';
+      el.classList.remove(cls);
+      void el.offsetWidth;
+      el.classList.add(cls);
+    });
+  },50);
+}
+
+gsap.to('.bg-mesh',{opacity:.8,duration:2});
+gsap.to('.bg-grid',{opacity:.5,duration:3});
+boot();
+</script>
+</body>
+</html>

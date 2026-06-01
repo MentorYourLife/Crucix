@@ -16,6 +16,7 @@ import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { LineAlerter } from './lib/alerts/line.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -38,10 +39,174 @@ const sseClients = new Set();
 // === Delta/Memory ===
 const memory = new MemoryManager(RUNS_DIR);
 
-// === LLM + Telegram + Discord ===
+// === LLM + Telegram + Discord + LINE ===
 const llmProvider = createLLMProvider(config.llm);
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
+const lineAlerter = new LineAlerter({
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
+  channelSecret: process.env.LINE_CHANNEL_SECRET || '',
+  userId: process.env.LINE_USER_ID || '',
+  groupId: process.env.LINE_GROUP_ID || '',
+});
+
+if (lineAlerter.isConfigured) {
+  console.log('[Crucix] LINE alerts enabled');
+
+  // ─── LINE Bot 指令綁定 ──────────────────────────────────────────────────
+  lineAlerter.onCommand('/status', async () => {
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const sourcesOk = currentData?.meta?.sourcesOk || 0;
+    const sourcesTotal = currentData?.meta?.sourcesQueried || 0;
+    const sourcesFailed = currentData?.meta?.sourcesFailed || 0;
+    const llmStatus = llmProvider?.isConfigured ? `✅ ${llmProvider.name}` : '❌ Disabled';
+    const nextSweep = lastSweepTime
+      ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei' })
+      : 'pending';
+
+    return [
+      `🖥️ 淬天情報中心運行狀態`,
+      `━━━━━━━━━━━━━━`,
+      `運行時間：${h}小時 ${m}分鐘`,
+      `上次掃描：${lastSweepTime ? new Date(lastSweepTime).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei' }) : '無'}`,
+      `下次掃描：${nextSweep}`,
+      `掃描狀態：${sweepInProgress ? '🔄 進行中' : '⏸️ 閒置'}`,
+      `情報來源：${sourcesOk}/${sourcesTotal} 正常${sourcesFailed > 0 ? ` (${sourcesFailed} 異常)` : ''}`,
+      `AI 分析：${llmStatus}`,
+      `網頁儀表板：${process.env.PUBLIC_URL || `http://localhost:${config.port}`}/zh`,
+    ].join('\n');
+  });
+
+  lineAlerter.onCommand('/sweep', async () => {
+    if (sweepInProgress) return '🔄 掃描已在進行中，請稍候。';
+    runSweepCycle().catch(err => console.error('[LINE Webhook] Manual sweep failed:', err.message));
+    return '🚀 淬天手動掃描已觸發！系統正在掃描 29 個全球情報源，完成後將自動更新網頁並發送重要推播。';
+  });
+
+  lineAlerter.onCommand('/brief', async () => {
+    if (!currentData) return '⏳ 系統剛啟動，尚無資料，請稍候。';
+    const tg = currentData.tg || {};
+    const energy = currentData.energy || {};
+    const metals = currentData.metals || {};
+    const delta = memory.getLastDelta();
+    const ideas = (currentData.ideas || []).slice(0, 3);
+
+    const sections = [
+      `📋 淬天即時情報簡報`,
+      `🕒 台北時間：${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`,
+      `━━━━━━━━━━━━━━`,
+    ];
+
+    if (delta?.summary) {
+      const dirEmoji = { 'risk-off': '📉 風險規避', 'risk-on': '📈 風險開啟', 'mixed': '↔️ 混合震盪' }[delta.summary.direction] || '↔️ 混合';
+      sections.push(`🧭 市場方向：${dirEmoji} | ${delta.summary.totalChanges} 項變化 (${delta.summary.criticalChanges} 項重大)`);
+      sections.push('');
+    }
+
+    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
+    if (vix || energy.wti || metals.gold) {
+      sections.push(`📊 關鍵指標：`);
+      sections.push(`  • VIX 恐慌指數：${vix?.value || '--'}`);
+      sections.push(`  • WTI 原油：$${energy.wti || '--'}`);
+      sections.push(`  • 黃金價格：$${metals.gold || '--'}`);
+      sections.push('');
+    }
+
+    if (tg.urgent?.length > 0) {
+      sections.push(`📡 開源情報 (OSINT) ${tg.urgent.length} 條緊急：`);
+      for (const p of tg.urgent.slice(0, 2)) {
+        sections.push(`  • [${(p.channel || '').toUpperCase()}] ${(p.text || '').substring(0, 70)}…`);
+      }
+      sections.push('');
+    }
+
+    if (ideas.length > 0) {
+      sections.push(`💡 最新 AI 策略建議：`);
+      const typeMap = { long: '📈 做多', short: '📉 做空', hedge: '🛡️ 避險', watch: '👁️ 觀察', avoid: '🚫 迴避' };
+      for (const idea of ideas) {
+        sections.push(`  • ${typeMap[idea.type?.toLowerCase()] || idea.type} ${idea.ticker || ''} | ${idea.title}`);
+      }
+    }
+
+    sections.push('');
+    sections.push(`👉 完整儀表板：${(process.env.PUBLIC_URL || `http://localhost:${config.port}`)}/zh`);
+    return sections.join('\n');
+  });
+
+  lineAlerter.onCommand('/ideas', async () => {
+    if (!currentData || !currentData.ideas?.length) return '⏳ 暫無 AI 策略建議，可能 Ollama 尚未完成分析或正在啟動中。';
+    const ideas = currentData.ideas;
+    const typeMap = { long: '📈 做多', short: '📉 做空', hedge: '🛡️ 避險', watch: '👁️ 觀察', avoid: '🚫 迴避' };
+    const sections = [
+      `💡 淬天 AI 策略建議`,
+      `🕒 生成時間：${lastSweepTime ? new Date(lastSweepTime).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : '無'}`,
+      `━━━━━━━━━━━━━━`,
+    ];
+    ideas.forEach((idea, i) => {
+      sections.push(`${i + 1}. ${typeMap[idea.type?.toLowerCase()] || idea.type} | ${idea.ticker || ''} (${idea.confidence || '中'})`);
+      sections.push(`   標題：${idea.title}`);
+      sections.push(`   理由：${(idea.text || idea.rationale || '').substring(0, 150)}…`);
+      sections.push(`   期限：${idea.horizon || '—'} | 風險：${idea.risk || '—'}`);
+      sections.push('');
+    });
+    return sections.join('\n');
+  });
+
+  lineAlerter.onCommand('/market', async () => {
+    if (!currentData) return '⏳ 暫無市場資料。';
+    const d = currentData;
+    const cryptos = d.markets?.crypto || [];
+    const btc  = cryptos.find(c => c.name === 'Bitcoin');
+    const eth  = cryptos.find(c => c.name === 'Ethereum');
+    const bnb  = cryptos.find(c => c.symbol === 'BNB-USD' || c.symbol === 'BNB');
+    const wld  = cryptos.find(c => c.symbol === 'WLD-USD' || c.symbol === 'WLD');
+    
+    const taiwan = d.markets?.taiwan || [];
+    const twii = taiwan.find(s => s.symbol === '^TWII');
+    const tsmc = taiwan.find(s => s.symbol === '2330.TW');
+    const mtk  = taiwan.find(s => s.symbol === '2454.TW');
+    const fox  = taiwan.find(s => s.symbol === '2317.TW');
+    
+    const us = d.markets?.usTech || [];
+    const nvda = us.find(s => s.symbol === 'NVDA');
+    const tsla = us.find(s => s.symbol === 'TSLA');
+    const aapl = us.find(s => s.symbol === 'AAPL');
+    const msft = us.find(s => s.symbol === 'MSFT');
+
+    const fmt = (v, prefix = '$', dec = 2) => 
+      v != null ? `${prefix}${Number(v).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })}` : '--';
+    const fmtPct = (v) => v != null ? `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%` : '--%';
+
+    const sections = [
+      `📊 淬天市場行情快照`,
+      `🕒 台北時間：${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`,
+      `━━━━━━━━━━━━━━`,
+      `🇹🇼 台灣市場`,
+      twii ? `  • 加權指數：${fmt(twii.price, '', 0)} (${fmtPct(twii.changePct)})` : '  • 加權指數：--',
+      tsmc ? `  • 台積電 2330：${fmt(tsmc.price, 'NT$', 0)} (${fmtPct(tsmc.changePct)})` : '  • 台積電：--',
+      mtk  ? `  • 聯發科 2454：${fmt(mtk.price, 'NT$', 0)} (${fmtPct(mtk.changePct)})` : '  • 聯發科：--',
+      fox  ? `  • 鴻海 2317：${fmt(fox.price, 'NT$', 0)} (${fmtPct(fox.changePct)})` : '  • 鴻海：--',
+      ``,
+      `💰 加密貨幣`,
+      btc ? `  • BTC：${fmt(btc.price, '$', 0)} (${fmtPct(btc.changePct)})` : '  • BTC：--',
+      eth ? `  • ETH：${fmt(eth.price, '$', 0)} (${fmtPct(eth.changePct)})` : '  • ETH：--',
+      bnb ? `  • BNB：${fmt(bnb.price, '$', 0)} (${fmtPct(bnb.changePct)})` : '  • BNB：--',
+      wld ? `  • WLD：${fmt(wld.price, '$', 3)} (${fmtPct(wld.changePct)})` : '  • WLD：--',
+      ``,
+      `🚀 美股科技`,
+      nvda ? `  • NVDA：${fmt(nvda.price, '$', 0)} (${fmtPct(nvda.changePct)})` : '  • NVDA：--',
+      tsla ? `  • TSLA：${fmt(tsla.price, '$', 0)} (${fmtPct(tsla.changePct)})` : '  • TSLA：--',
+      aapl ? `  • AAPL：${fmt(aapl.price, '$', 0)} (${fmtPct(aapl.changePct)})` : '  • AAPL：--',
+      msft ? `  • MSFT：${fmt(msft.price, '$', 0)} (${fmtPct(msft.changePct)})` : '  • MSFT：--',
+      `━━━━━━━━━━━━━━`,
+      `👉 儀表板：${(process.env.PUBLIC_URL || `http://localhost:${config.port}`)}/zh`
+    ];
+
+    return sections.join('\n');
+  });
+}
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -236,26 +401,38 @@ if (discordAlerter.isConfigured) {
 const app = express();
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
-// Serve loading page until first sweep completes, then the dashboard with injected locale
-app.get('/', (req, res) => {
-  if (!currentData) {
-    res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
-  } else {
-    const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
-    let html = readFileSync(htmlPath, 'utf-8');
-    
-    // Inject locale data into the HTML
-    const locale = getLocale();
-    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    html = html.replace('</head>', `${localeScript}\n</head>`);
-    
-    res.type('html').send(html);
+// LINE Bot Webhook POST 路由
+app.post('/api/line/webhook', express.json(), async (req, res) => {
+  if (lineAlerter.isConfigured && req.body.events) {
+    try {
+      await lineAlerter.handleWebhookEvents(req.body.events);
+    } catch (err) {
+      console.error('[Crucix] Error handling LINE webhook events:', err.message);
+    }
   }
+  res.sendStatus(200);
 });
 
-// API: current data
-app.get('/api/data', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+// 中文版儀表板路由
+app.get('/zh', (req, res) => {
+  res.sendFile(join(ROOT, 'dashboard/public/cuitian.html'));
+});
+
+// 根目錄直接安全導向中文版儀表板
+app.get('/', (req, res) => res.redirect('/zh'));
+
+// API: current data (加入 fallback 自動讀取機制以消除 503 黑畫面)
+app.get('/api/data', async (req, res) => {
+  if (!currentData) {
+    try {
+      const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
+      const data = await synthesize(existing);
+      currentData = data;
+      console.log('[Crucix API] Dynamically loaded fallback data from runs/latest.json');
+    } catch (e) {
+      return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+    }
+  }
   res.json(currentData);
 });
 
@@ -362,7 +539,7 @@ async function runSweepCycle() {
       synthesized.ideasSource = 'disabled';
     }
 
-    // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
+    // 6. Alert evaluation — Telegram + Discord + LINE
     if (delta?.summary?.totalChanges > 0) {
       if (telegramAlerter.isConfigured) {
         telegramAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
@@ -372,6 +549,11 @@ async function runSweepCycle() {
       if (discordAlerter.isConfigured) {
         discordAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
           console.error('[Crucix] Discord alert error:', err.message);
+        });
+      }
+      if (lineAlerter.isConfigured) {
+        lineAlerter.evaluateAndAlert(synthesized, delta).catch(err => {
+          console.error('[Crucix] LINE alert error:', err.message);
         });
       }
     }
@@ -468,7 +650,118 @@ async function start() {
 
     // Schedule recurring sweeps
     setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+
+    // ☯ 三段式定時推播排程：07:00 早安 / 13:00 午間 / 19:00 上班前 (台北時間 UTC+8)
+    if (lineAlerter.isConfigured) {
+      scheduleDaily(7,  '早安',   sendMorningBriefing);
+      scheduleDaily(13, '午間',   sendAfternoonBriefing);
+      scheduleDaily(19, '上班前', sendPreWorkBriefing);
+    }
   });
+}
+
+// ─── 每日定時推播核心 (台北時間 UTC+8) ────────────────────────────────────────────────────
+function scheduleDaily(targetHour, label, fn) {
+  function msUntilNext() {
+    const now = new Date();
+    const nowTPEmin = (now.getUTCHours() * 60 + now.getUTCMinutes() + 8 * 60) % (24 * 60);
+    const diffMin = targetHour * 60 - nowTPEmin;
+    const waitMin = diffMin > 0 ? diffMin : diffMin + 24 * 60;
+    return waitMin * 60 * 1000 - now.getUTCSeconds() * 1000 - now.getUTCMilliseconds();
+  }
+  const wait = msUntilNext();
+  const nextRun = new Date(Date.now() + wait);
+  console.log(`[淬天] ${label}推播排程 → ${nextRun.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })} (台北時間)`);
+  setTimeout(async function fire() {
+    console.log(`[淬天] 🔔 ${label}推播觸發！`);
+    try { 
+      await fn(); 
+    } catch(err) { 
+      console.error(`[淬天] ${label}推播失敗:`, err.message); 
+    }
+    setTimeout(fire, msUntilNext());
+  }, wait);
+}
+
+// 07:00 早安推播
+async function sendMorningBriefing() {
+  if (!lineAlerter?.isConfigured || !currentData) return;
+  console.log('[淬天] 正在發送早安情報推播...');
+  await lineAlerter.pushMorningSummary(currentData);
+  console.log('[淬天] 早安推播完成');
+}
+
+// 13:00 午間推播
+async function sendAfternoonBriefing() {
+  if (!lineAlerter?.isConfigured || !currentData) return;
+  console.log('[淬天] 正在發送午間情報推播...');
+  const pubUrl = (process.env.PUBLIC_URL || `http://localhost:${config.port}`).replace(/\/$/, '');
+  const d = currentData;
+  const cryptos = d.markets?.crypto || [];
+  const btc  = cryptos.find(c => c.name === 'Bitcoin');
+  const bnb  = cryptos.find(c => c.symbol === 'BNB-USD' || c.symbol === 'BNB');
+  const wld  = cryptos.find(c => c.symbol === 'WLD-USD' || c.symbol === 'WLD');
+  const tsmc = (d.markets?.taiwan || []).find(s => s.symbol === '2330.TW');
+  const nvda = (d.markets?.usTech || []).find(s => s.symbol === 'NVDA');
+  
+  const nameMap = {Bitcoin:'BTC',Ethereum:'ETH',BNB:'BNB',Solana:'SOL',XRP:'XRP',Dogecoin:'DOGE',Worldcoin:'WLD'};
+  const topCrypto = [...cryptos].filter(c => c.changePct != null)
+    .sort((a, b) => (b.changePct || 0) - (a.changePct || 0))[0];
+
+  const lines = [
+    `☯【13:00】淬天午間情報`, 
+    `━━━━━━━━━━━━━━`,
+    `📊 市場中場`,
+    btc  ? `  • BTC: $${btc.price?.toLocaleString()} (${btc.changePct>=0?'+':''}${btc.changePct?.toFixed(2)}%)` : '',
+    bnb  ? `  • BNB: $${bnb.price?.toFixed(0)} (${bnb.changePct>=0?'+':''}${bnb.changePct?.toFixed(2)}%)` : '',
+    wld  ? `  • WLD: $${wld.price?.toFixed(3)} (${wld.changePct>=0?'+':''}${wld.changePct?.toFixed(2)}%)` : '',
+    tsmc ? `  • 台積電: NT$${tsmc.price} (${tsmc.changePct>=0?'+':''}${tsmc.changePct?.toFixed(2)}%)` : '',
+    nvda ? `  • NVDA: $${nvda.price?.toFixed(0)} (${nvda.changePct>=0?'+':''}${nvda.changePct?.toFixed(2)}%)` : '',
+    topCrypto ? `🔥 最強：${nameMap[topCrypto.name]||topCrypto.name} +${topCrypto.changePct?.toFixed(2)}%` : '',
+    ``,
+    (d.ideas||[])[0] ? `🤖 AI策略：[${d.ideas[0].type.toUpperCase()}] ${d.ideas[0].title}` : '',
+    `👉 儀表板：${pubUrl}/zh`,
+  ].filter(line => line !== null && line !== undefined).join('\n');
+  
+  await lineAlerter.push(lines, true);
+  console.log('[淬天] 午間推播完成');
+}
+
+// 19:00 上班前推播 (台北時間)
+async function sendPreWorkBriefing() {
+  if (!lineAlerter?.isConfigured || !currentData) return;
+  console.log('[淬天] 正在發送上班前情報推播...');
+  const pubUrl = (process.env.PUBLIC_URL || `http://localhost:${config.port}`).replace(/\/$/, '');
+  const d = currentData;
+  const cryptos = d.markets?.crypto || [];
+  const btc = cryptos.find(c => c.name === 'Bitcoin');
+  const nameMap = {Bitcoin:'BTC',Ethereum:'ETH',BNB:'BNB',Solana:'SOL',XRP:'XRP',Dogecoin:'DOGE',Worldcoin:'WLD'};
+  const topCrypto = [...cryptos].filter(c => c.changePct != null)
+    .sort((a, b) => (b.changePct || 0) - (a.changePct || 0))[0];
+  const vix = d.fred?.find(f => f.id === 'VIXCLS');
+  const ideas = d.ideas || [];
+  const daysLeft = Math.max(0, Math.floor((new Date('2026-06-12T09:30:00-04:00') - Date.now()) / 86400000));
+  
+  const lines = [
+    `☯【19:00】淬天上班前情報`,
+    `━━━━━━━━━━━━━━━━━━━━━`, 
+    btc ? `BTC $${btc.price?.toLocaleString()} (${btc.changePct>=0?'+':''}${btc.changePct?.toFixed(2)}%)` : '',
+    `VIX ${vix?.value?.toFixed(1)||'--'} | 緊急情報 ${d.tg?.urgent?.length||0} 條`,
+    topCrypto ? `🔥 今日最強：${nameMap[topCrypto.name]||topCrypto.name} +${topCrypto.changePct?.toFixed(2)}%` : '',
+    ``,
+    ideas.length ? `🤖 AI今日策略：` : '',
+    ...ideas.slice(0,3).map((idea,i)=>`  ${i+1}. [${idea.type.toUpperCase()}] ${idea.ticker||''} — ${(idea.title||'').substring(0,40)}`),
+    ``,
+    ...(d.tg?.urgent||[]).slice(0,2).map(p=>`⚡ ${(p.text||'').substring(0,70)}…`),
+    ``,
+    daysLeft>0 ? `🚀 SpaceX IPO 倒數 ${daysLeft} 天` : '',
+    `━━━━━━━━━━━━━━━━━━━━━`,
+    `輸入 /ideas 看完整策略`, 
+    `👉 儀表板：${pubUrl}/zh`,
+  ].filter(line => line !== null && line !== undefined).join('\n');
+  
+  await lineAlerter.push(lines, true);
+  console.log('[淬天] 上班前推播完成');
 }
 
 // Graceful error handling — log full stack traces for diagnosis

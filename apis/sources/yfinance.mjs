@@ -6,27 +6,39 @@ import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
-// Symbols to track — covers broad market, rates, commodities, crypto, volatility
+// Symbols to track — 台股 + 美股科技 + 加密貨幣 + 大宗商品
 const SYMBOLS = {
-  // Indexes / ETFs
+  // === 美國指數 ===
   '^GSPC': 'S&P 500',
   '^IXIC': 'Nasdaq Composite',
   '^DJI': 'Dow Jones',
-  '^RUT': 'Russell 2000',
-  // Rates / Credit
-  TLT: '20Y+ Treasury',
-  HYG: 'High Yield Corp',
-  LQD: 'IG Corporate',
-  // Commodities
+  // === 🇹🇼 台灣市場 ===
+  '^TWII':  '加權指數',
+  '2330.TW': '台積電',
+  '2454.TW': '聯發科',
+  '2317.TW': '鴻海',
+  '2308.TW': '台達電',
+  // === 🚀 美股科技 (馬斯克概念) ===
+  'TSLA': '特斯拉',
+  'NVDA': '輝達',
+  'AAPL': '蘋果',
+  'MSFT': '微軟',
+  'AMZN': '亞馬遜',
+  // === 大宗商品 ===
   'GC=F': 'Gold',
   'SI=F': 'Silver',
   'CL=F': 'WTI Crude',
   'BZ=F': 'Brent Crude',
   'NG=F': 'Natural Gas',
-  // Crypto
-  'BTC-USD': 'Bitcoin',
-  'ETH-USD': 'Ethereum',
-  // Volatility
+  // === 💰 加密貨幣 (完整版) ===
+  'BTC-USD':  'Bitcoin',
+  'ETH-USD':  'Ethereum',
+  'BNB-USD':  'BNB',
+  'SOL-USD':  'Solana',
+  'XRP-USD':  'XRP',
+  'DOGE-USD': 'Dogecoin',
+  'WLD-USD':  'Worldcoin',
+  // === 波動率 ===
   '^VIX': 'VIX',
 };
 
@@ -117,10 +129,11 @@ export async function collect() {
       failed,
       timestamp: new Date().toISOString(),
     },
-    indexes: pickGroup(quotes, ['^GSPC', '^IXIC', '^DJI', '^RUT']),
-    rates: pickGroup(quotes, ['TLT', 'HYG', 'LQD']),
-    commodities: pickGroup(quotes, ['GC=F', 'SI=F', 'CL=F', 'BZ=F', 'NG=F']),
-    crypto: pickGroup(quotes, ['BTC-USD', 'ETH-USD']),
+    indexes:    pickGroup(quotes, ['^GSPC', '^IXIC', '^DJI']),
+    taiwan:     pickGroup(quotes, ['^TWII', '2330.TW', '2454.TW', '2317.TW', '2308.TW']),
+    usTech:     pickGroup(quotes, ['TSLA', 'NVDA', 'AAPL', 'MSFT', 'AMZN']),
+    commodities:pickGroup(quotes, ['GC=F', 'SI=F', 'CL=F', 'BZ=F', 'NG=F']),
+    crypto:     pickGroup(quotes, ['BTC-USD', 'ETH-USD', 'BNB-USD', 'SOL-USD', 'XRP-USD', 'DOGE-USD', 'WLD-USD']),
     volatility: pickGroup(quotes, ['^VIX']),
   };
 }

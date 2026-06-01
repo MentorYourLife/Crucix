@@ -561,7 +561,18 @@ export async function synthesize(data) {
     })),
     crypto: (yfData.crypto || []).map(q => ({
       symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct
+      change: q.change, changePct: q.changePct, history: q.history || []
+    })),
+    // 🇹🇼 台股：^TWII, 2330.TW, 2454.TW, 2317.TW, 2308.TW
+    taiwan: (yfData.taiwan || []).map(q => ({
+      symbol: q.symbol, name: q.name, price: q.price,
+      change: q.change, changePct: q.changePct,
+      currency: q.currency || 'TWD', history: q.history || []
+    })),
+    // 🚀 美股科技：TSLA, NVDA, AAPL, MSFT, AMZN
+    usTech: (yfData.usTech || []).map(q => ({
+      symbol: q.symbol, name: q.name, price: q.price,
+      change: q.change, changePct: q.changePct, history: q.history || []
     })),
     vix: yfQuotes['^VIX'] ? {
       value: yfQuotes['^VIX'].price,
