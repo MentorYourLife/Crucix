@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>淬天 · The Destiny OS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030508;
+    --gold: #fbbf24;
+    --cyan: #22d3ee;
+    --purple: #c084fc;
+  }
+  body, html {
+    margin: 0; padding: 0;
+    width: 100vw; height: 100vh;
+    background: var(--bg);
+    color: #fff;
+    font-family: 'Noto Serif TC', serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  /* Ripple Canvas */
+  #rippleCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  /* Overlay */
+  #uiLayer {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+  }
+  
+  /* Initial State */
+  .title-cuitian {
+    font-size: 8rem;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    text-shadow: 0 0 30px rgba(255,255,255,0.1);
+    transition: all 0.5s ease;
+    z-index: 20;
+  }
+  .title-cuitian:hover {
+    text-shadow: 0 0 50px rgba(255,255,255,0.4);
+    transform: scale(1.05);
+  }
+
+  /* Tai Chi */
+  .taichi-container {
+    position: absolute;
+    width: 200px; height: 200px;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.5);
+    z-index: 15;
+  }
+  .taichi-svg {
+    width: 100%; height: 100%;
+    filter: drop-shadow(0 0 20px rgba(251,191,36,0.5));
+  }
+
+  /* Doors Stage */
+  .doors-stage {
+    position: absolute;
+    width: 100vw; height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8vw;
+    opacity: 0;
+    pointer-events: none;
+    perspective: 1200px;
+  }
+  .door-container {
+    position: relative;
+    width: 32vw; max-width: 450px;
+    height: 75vh; max-height: 850px;
+    cursor: pointer;
+    transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    transform-style: preserve-3d;
+  }
+  .door-container:hover {
+    transform: translateZ(50px) scale(1.02);
+  }
+  .door-bg {
+    position: absolute;
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-position: center;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,255,255,0.05);
+    filter: grayscale(40%) brightness(0.8);
+    transition: all 0.5s ease;
+  }
+  .door-container:hover .door-bg {
+    filter: grayscale(0%) brightness(1.1);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .door-left .door-bg {
+    background-image: url('cuitian_door_left_1780352960741.png');
+    box-shadow: 0 0 40px rgba(34, 211, 238, 0.1);
+  }
+  .door-right .door-bg {
+    background-image: url('cuitian_door_right_1780352972713.png');
+    box-shadow: 0 0 40px rgba(192, 132, 252, 0.1);
+  }
+  .door-container:hover.door-left .door-bg { box-shadow: 0 0 60px rgba(34, 211, 238, 0.4); }
+  .door-container:hover.door-right .door-bg { box-shadow: 0 0 60px rgba(192, 132, 252, 0.4); }
+
+  .door-text {
+    position: absolute;
+    bottom: 12%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 3rem;
+    font-weight: 900;
+    letter-spacing: 0.3em;
+    text-shadow: 0 4px 20px rgba(0,0,0,0.8);
+    writing-mode: vertical-rl;
+    transition: all 0.4s ease;
+  }
+  .door-left .door-text { color: var(--cyan); }
+  .door-right .door-text { color: var(--purple); }
+  .door-container:hover .door-text {
+    text-shadow: 0 0 30px currentColor;
+    letter-spacing: 0.4em;
+  }
+  
+  /* L1 Bazi Mech Stage */
+  #baziStage {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(3,5,8,0.95);
+    backdrop-filter: blur(20px);
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="rippleCanvas"></canvas>
+
+<div id="uiLayer">
+  <div class="title-cuitian" id="cuitianTitle">淬天</div>
+  
+  <div class="taichi-container" id="taichi">
+    <svg class="taichi-svg" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" fill="none" stroke="var(--gold)" stroke-width="2" stroke-dasharray="4 4" />
+      <path d="M 50 2 A 48 48 0 0 1 50 98 A 24 24 0 0 0 50 50 A 24 24 0 0 1 50 2" fill="#fff"/>
+      <path d="M 50 2 A 48 48 0 0 0 50 98 A 24 24 0 0 1 50 50 A 24 24 0 0 0 50 2" fill="#000"/>
+      <circle cx="50" cy="26" r="6" fill="#000"/>
+      <circle cx="50" cy="74" r="6" fill="#fff"/>
+    </svg>
+  </div>
+
+  <div class="doors-stage" id="doorsStage">
+    <div class="door-container door-left" onclick="openDoor('jinrenshi')">
+      <div class="door-bg"></div>
+      <div class="door-text">盡人事</div>
+    </div>
+    <div class="door-container door-right" onclick="openDoor('tingtianming')">
+      <div class="door-bg"></div>
+      <div class="door-text">聽天命</div>
+    </div>
+  </div>
+</div>
+
+<div id="baziStage">
+  <!-- Bazi UI will be injected here -->
+</div>
+
+<!-- Simple Drone Sound Generator (Web Audio API) -->
+<script>
+  let audioCtx, droneOsc, lfo;
+  function initAudio() {
+    if(audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Deep drone sound
+    droneOsc = audioCtx.createOscillator();
+    droneOsc.type = 'sine';
+    droneOsc.frequency.value = 55; // A1
+    
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0;
+    
+    // Low pass filter to make it muffled
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 200;
+    
+    // LFO for pulsing
+    lfo = audioCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.1; // 10 seconds per pulse
+    const lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 0.5;
+    
+    lfo.connect(lfoGain);
+    lfoGain.connect(gainNode.gain);
+    
+    droneOsc.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    droneOsc.start();
+    lfo.start();
+    
+    // Fade in
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 3);
+  }
+
+  // Ripple Effect (Water simulation on canvas)
+  const canvas = document.getElementById('rippleCanvas');
+  const ctx = canvas.getContext('2d');
+  let width, height;
+  let ripples = [];
+  
+  function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  window.addEventListener('mousemove', (e) => {
+    if(Math.random() > 0.8) {
+      ripples.push({x: e.clientX, y: e.clientY, r: 0, alpha: 0.5});
+    }
+  });
+
+  function drawRipples() {
+    ctx.clearRect(0, 0, width, height);
+    for(let i=ripples.length-1; i>=0; i--) {
+      let rip = ripples[i];
+      ctx.beginPath();
+      ctx.arc(rip.x, rip.y, rip.r, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(192, 132, 252, ${rip.alpha})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      rip.r += 2;
+      rip.alpha -= 0.005;
+      if(rip.alpha <= 0) ripples.splice(i, 1);
+    }
+    requestAnimationFrame(drawRipples);
+  }
+  drawRipples();
+
+  // Intro Animation Sequence
+  const title = document.getElementById('cuitianTitle');
+  const taichi = document.getElementById('taichi');
+  const doorsStage = document.getElementById('doorsStage');
+  
+  title.addEventListener('click', () => {
+    initAudio();
+    
+    // Hide Title
+    gsap.to(title, {opacity: 0, scale: 2, filter: 'blur(20px)', duration: 1.5, ease: "power2.in", onComplete: () => {
+      title.style.display = 'none';
+      
+      // Show Tai Chi
+      gsap.to(taichi, {opacity: 1, scale: 1, rotation: 720, duration: 2.5, ease: "power2.inOut", onComplete: () => {
+        // Expand to Doors
+        gsap.to(taichi, {scale: 5, opacity: 0, duration: 1});
+        
+        doorsStage.style.pointerEvents = 'all';
+        gsap.to(doorsStage, {opacity: 1, duration: 1.5, delay: 0.5});
+        
+        gsap.from('.door-left', {x: -200, rotationY: 20, opacity: 0, duration: 1.5, ease: "power3.out", delay: 0.5});
+        gsap.from('.door-right', {x: 200, rotationY: -20, opacity: 0, duration: 1.5, ease: "power3.out", delay: 0.5});
+      }});
+    }});
+  });
+
+  // Open Door Transition
+  window.openDoor = function(type) {
+    if(type === 'jinrenshi') {
+      // Zoom into left door
+      gsap.to('.door-left', {scale: 10, opacity: 0, duration: 1.5, ease: "power2.in"});
+      gsap.to('.door-right', {x: 500, opacity: 0, duration: 1});
+      
+      setTimeout(() => {
+        // Redirect to OS Bazi interface
+        window.location.href = 'os_bazi.html';
+      }, 1200);
+    } else {
+      gsap.to('.door-right', {scale: 10, opacity: 0, duration: 1.5, ease: "power2.in"});
+      gsap.to('.door-left', {x: -500, opacity: 0, duration: 1});
+    }
+  }
+</script>
+</body>
+</html>

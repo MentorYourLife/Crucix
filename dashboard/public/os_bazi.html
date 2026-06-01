@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Bazi Destiny OS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/Draggable.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;500;700&family=Noto+Sans+TC:wght@300;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #010308;
+    --panel: rgba(6,14,26,0.7);
+    --border: rgba(34,211,238,0.2);
+    --cyan: #22d3ee;
+    --gold: #fbbf24;
+    --red: #f87171;
+    --green: #34d399;
+    --purple: #c084fc;
+    --dim: #64748b;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+  body, html {
+    margin: 0; padding: 0;
+    width: 100vw; height: 100vh;
+    background: var(--bg);
+    color: #e2e8f0;
+    font-family: 'Noto Sans TC', sans-serif;
+    overflow: hidden;
+    background-image: 
+      linear-gradient(rgba(34,211,238,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,211,238,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  
+  /* INPUT PHASE */
+  #inputPhase {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 100;
+    background: radial-gradient(circle at center, #06111f 0%, var(--bg) 100%);
+    transition: opacity 1s;
+  }
+  .input-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 40px;
+  }
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .input-group label {
+    font-family: var(--mono);
+    color: var(--cyan);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .cyber-input {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    color: #fff;
+    padding: 15px;
+    font-size: 24px;
+    font-family: var(--mono);
+    text-align: center;
+    outline: none;
+    transition: all 0.3s;
+    width: 120px;
+  }
+  .cyber-input:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 20px rgba(34,211,238,0.2);
+  }
+  .cyber-btn {
+    background: transparent;
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    padding: 15px 40px;
+    font-size: 16px;
+    letter-spacing: 0.3em;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+  .cyber-btn:hover {
+    background: rgba(34,211,238,0.1);
+    box-shadow: 0 0 30px rgba(34,211,238,0.3);
+  }
+
+  /* OS DASHBOARD (L1-L6) */
+  #osDashboard {
+    display: none;
+    width: 100vw; height: 100vh;
+    position: relative;
+    opacity: 0;
+  }
+  
+  /* L1: Mech Core (Center) */
+  #l1_mech {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px; height: 500px;
+    perspective: 1000px;
+  }
+  .hologram-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotateX(60deg);
+    width: 600px; height: 600px;
+    border: 1px dashed rgba(34,211,238,0.2);
+    border-radius: 50%;
+    animation: spin 30s linear infinite;
+  }
+  .hologram-ring::before {
+    content: ''; position: absolute;
+    top: -10px; left: -10px; right: -10px; bottom: -10px;
+    border: 2px solid rgba(192,132,252,0.1);
+    border-radius: 50%;
+    animation: spin-reverse 40s linear infinite;
+  }
+  @keyframes spin { 100% { transform: translate(-50%, -50%) rotateX(60deg) rotateZ(360deg); } }
+  @keyframes spin-reverse { 100% { transform: rotateZ(-360deg); } }
+  
+  .pillar-block {
+    position: absolute;
+    width: 80px; height: 120px;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-size: 36px;
+    font-weight: 900;
+    box-shadow: inset 0 0 20px rgba(34,211,238,0.05);
+    transition: all 0.3s;
+  }
+  .pillar-block:hover {
+    border-color: var(--cyan);
+    box-shadow: 0 0 30px rgba(34,211,238,0.2), inset 0 0 20px rgba(34,211,238,0.1);
+    z-index: 10;
+  }
+  .pb-year { top: 20%; left: 15%; }
+  .pb-month { top: 20%; left: 35%; }
+  .pb-day { top: 20%; left: 55%; border-color: var(--gold); }
+  .pb-hour { top: 20%; left: 75%; }
+  
+  .pb-label { font-family: var(--mono); font-size: 10px; color: var(--dim); position: absolute; top: -20px; }
+  
+  .hidden-gene {
+    position: absolute;
+    font-family: var(--mono); font-size: 14px; color: rgba(255,255,255,0.4);
+    text-shadow: 0 0 10px rgba(255,255,255,0.2);
+  }
+  #taiyuan { top: -40px; left: 30%; }
+  #minggong { top: -40px; right: 30%; }
+
+  /* L2: Hex Radar (Top Left) */
+  #l2_radar {
+    position: absolute; top: 40px; left: 40px;
+    width: 300px; height: 300px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+  }
+  
+  /* L3: Thermometer & Antivirus (Top Right) */
+  #l3_system {
+    position: absolute; top: 40px; right: 40px;
+    width: 300px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 20px;
+    backdrop-filter: blur(10px);
+  }
+  .sys-title { font-family: var(--mono); font-size: 10px; color: var(--cyan); margin-bottom: 10px; }
+  .progress-bar { width: 100%; height: 4px; background: #1e293b; margin-bottom: 20px; position: relative; }
+  .progress-fill { height: 100%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); width: 0%; transition: width 1s; }
+  .temp-bar .progress-fill { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  
+  /* L4: Badges (Near Day Pillar) */
+  .badge {
+    position: absolute; bottom: -40px; left: 50%; transform: translateX(-50%);
+    background: rgba(251,191,36,0.1); border: 1px solid var(--gold);
+    color: var(--gold); padding: 4px 12px; font-size: 12px; font-family: var(--mono);
+    white-space: nowrap; box-shadow: 0 0 15px rgba(251,191,36,0.2);
+  }
+
+  /* L5: SVG Lasers */
+  #laserCanvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 5;
+  }
+  
+  /* L6: Draggable Timeline */
+  #l6_timeline {
+    position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+    width: 80vw; height: 60px;
+    background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    display: flex; align-items: center;
+    padding: 0 20px;
+  }
+  .timeline-track { width: 100%; height: 2px; background: rgba(255,255,255,0.1); position: relative; }
+  .timeline-thumb {
+    width: 20px; height: 40px; background: var(--cyan);
+    position: absolute; top: -19px; left: 0;
+    cursor: grab; box-shadow: 0 0 20px rgba(34,211,238,0.4);
+    display: flex; justify-content: center; align-items: flex-end;
+  }
+  .timeline-thumb span {
+    position: absolute; top: -25px; color: var(--cyan); font-family: var(--mono); font-size: 14px;
+  }
+  
+  /* Tooltip */
+  .tooltip {
+    position: absolute; background: rgba(0,0,0,0.9); border: 1px solid var(--gold);
+    color: #fff; padding: 15px; font-size: 13px; max-width: 250px;
+    pointer-events: none; opacity: 0; z-index: 100;
+    box-shadow: 0 0 20px rgba(251,191,36,0.2); line-height: 1.6;
+  }
+
+</style>
+</head>
+<body>
+
+<div id="inputPhase">
+  <div style="font-family:var(--mono);color:var(--cyan);margin-bottom:30px;letter-spacing:0.3em;text-align:center">
+    <div>SYSTEM INITIALIZATION</div>
+    <div style="font-size:10px;color:var(--dim);margin-top:5px">THE BAZI DESTINY OS</div>
+  </div>
+  
+  <div class="input-grid">
+    <div class="input-group">
+      <label>YEAR (公曆)</label>
+      <input type="number" id="i_y" class="cyber-input" value="1990">
+    </div>
+    <div class="input-group">
+      <label>MONTH</label>
+      <input type="number" id="i_m" class="cyber-input" value="6">
+    </div>
+    <div class="input-group">
+      <label>DAY</label>
+      <input type="number" id="i_d" class="cyber-input" value="15">
+    </div>
+  </div>
+  
+  <div class="input-grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="input-group">
+      <label>HOUR (0-23)</label>
+      <input type="number" id="i_h" class="cyber-input" value="12" style="width:160px">
+    </div>
+    <div class="input-group">
+      <label>GENDER</label>
+      <select id="i_g" class="cyber-input" style="width:160px; appearance:none;">
+        <option value="M">MALE</option>
+        <option value="F">FEMALE</option>
+      </select>
+    </div>
+  </div>
+  
+  <button class="cyber-btn" onclick="bootOS()">INITIALIZE SYSTEM</button>
+</div>
+
+<div id="osDashboard">
+  <svg id="laserCanvas"></svg>
+  
+  <!-- L1: Mech -->
+  <div id="l1_mech">
+    <div class="hologram-ring"></div>
+    <div class="hidden-gene" id="taiyuan">胎元: SCANNING...</div>
+    <div class="hidden-gene" id="minggong">命宮: SCANNING...</div>
+    
+    <div class="pillar-block pb-year" id="p_year">
+      <div class="pb-label">年柱 YEAR</div>
+      <div id="gz_year">庚午</div>
+    </div>
+    <div class="pillar-block pb-month" id="p_month">
+      <div class="pb-label">月柱 MONTH</div>
+      <div id="gz_month">壬午</div>
+    </div>
+    <div class="pillar-block pb-day" id="p_day">
+      <div class="pb-label">日柱 DAY (CORE)</div>
+      <div id="gz_day">甲子</div>
+      <div class="badge" id="badge_pattern">創新變現企業家</div>
+    </div>
+    <div class="pillar-block pb-hour" id="p_hour">
+      <div class="pb-label">時柱 HOUR</div>
+      <div id="gz_hour">庚午</div>
+    </div>
+  </div>
+  
+  <!-- L2: Radar -->
+  <div id="l2_radar">
+    <div style="padding:15px; font-family:var(--mono); color:var(--cyan); font-size:12px; border-bottom:1px solid var(--border)">
+      [L2] 十神權限網 // SOCIAL ROLES
+    </div>
+    <canvas id="radarCanvas" width="300" height="250"></canvas>
+  </div>
+  
+  <!-- L3: System -->
+  <div id="l3_system">
+    <div class="sys-title">[L3] THERMAL ENGINE (系統溫度)</div>
+    <div class="progress-bar temp-bar"><div class="progress-fill" id="bar_temp"></div></div>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:20px" id="txt_temp">系統掃描中...</div>
+    
+    <div class="sys-title">[L3] ANTIVIRUS (病藥掃描)</div>
+    <div class="progress-bar"><div class="progress-fill" id="bar_med"></div></div>
+    <div style="font-size:12px;color:var(--dim)" id="txt_med">系統掃描中...</div>
+  </div>
+  
+  <!-- L6: Timeline -->
+  <div id="l6_timeline">
+    <div style="font-family:var(--mono);color:var(--cyan);margin-right:20px;font-size:12px">EXECUTION TIMELINE</div>
+    <div class="timeline-track" id="track">
+      <div class="timeline-thumb" id="thumb">
+        <span id="thumbYear">2026</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+  // -- UI Logic Scaffold --
+  // We will integrate the actual engine logic in the next step.
+  
+  function bootOS() {
+    gsap.to('#inputPhase', {opacity: 0, duration: 1, onComplete: () => {
+      document.getElementById('inputPhase').style.display = 'none';
+      document.getElementById('osDashboard').style.display = 'block';
+      gsap.to('#osDashboard', {opacity: 1, duration: 1});
+      
+      // Animate entry
+      gsap.from('.pillar-block', {y: 100, opacity: 0, rotationX: 45, stagger: 0.1, duration: 1, ease: 'back.out(1.7)'});
+      gsap.from('#l2_radar', {x: -50, opacity: 0, duration: 1, delay: 0.5});
+      gsap.from('#l3_system', {x: 50, opacity: 0, duration: 1, delay: 0.6});
+      gsap.from('#l6_timeline', {y: 50, opacity: 0, duration: 1, delay: 0.7});
+      
+      // Mock calculations for visual demo
+      setTimeout(renderMockRadar, 1000);
+      
+      gsap.to('#bar_temp', {width: '80%', duration: 1.5, delay: 1});
+      document.getElementById('txt_temp').innerHTML = '<span style="color:var(--red)">WARNING: HIGH TEMP</span><br>需癸水散熱';
+      
+      gsap.to('#bar_med', {width: '60%', duration: 1.5, delay: 1.2});
+      document.getElementById('txt_med').innerHTML = '原局病重藥輕，需行運補給';
+    }});
+  }
+  
+  // Draggable Timeline
+  let currentYear = 2026;
+  if(typeof Draggable !== 'undefined') {
+    Draggable.create("#thumb", {
+      type: "x",
+      bounds: "#track",
+      onDrag: function() {
+        // Calculate year based on x position (0 to track width)
+        const rect = document.getElementById('track').getBoundingClientRect();
+        const pct = this.x / rect.width;
+        const year = 1940 + Math.round(pct * 100);
+        document.getElementById('thumbYear').innerText = year;
+        
+        // Add random glitch effect when dragging
+        if(Math.random() > 0.8) {
+          document.body.style.filter = `hue-rotate(${Math.random()*20-10}deg) contrast(1.2)`;
+          setTimeout(()=>document.body.style.filter='none', 50);
+        }
+      },
+      onDragEnd: function() {
+        document.body.style.filter='none';
+        // Trigger Engine Recalculation Here
+      }
+    });
+  }
+  
+  // Mock Radar Chart using Canvas (To be replaced with D3 or real logic)
+  function renderMockRadar() {
+    const canvas = document.getElementById('radarCanvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const cx = w/2, cy = h/2 + 10, r = 80;
+    
+    ctx.clearRect(0,0,w,h);
+    
+    // Draw bg hex
+    ctx.beginPath();
+    for(let i=0; i<6; i++) {
+      let a = (Math.PI*2/6)*i - Math.PI/2;
+      ctx.lineTo(cx + r*Math.cos(a), cy + r*Math.sin(a));
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(34,211,238,0.2)';
+    ctx.stroke();
+    
+    // Draw data hex
+    const data = [0.8, 0.4, 0.9, 0.2, 0.6, 0.7]; // Mock values
+    ctx.beginPath();
+    for(let i=0; i<6; i++) {
+      let a = (Math.PI*2/6)*i - Math.PI/2;
+      let dr = r * data[i];
+      ctx.lineTo(cx + dr*Math.cos(a), cy + dr*Math.sin(a));
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(34,211,238,0.3)';
+    ctx.fill();
+    ctx.strokeStyle = '#22d3ee';
+    ctx.stroke();
+    
+    // Labels
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px monospace';
+    const labels = ['印星(防禦)', '比劫(競爭)', '食傷(輸出)', '正財(穩定)', '偏財(風險)', '官殺(抗壓)'];
+    for(let i=0; i<6; i++) {
+      let a = (Math.PI*2/6)*i - Math.PI/2;
+      let tx = cx + (r+20)*Math.cos(a);
+      let ty = cy + (r+15)*Math.sin(a);
+      ctx.fillText(labels[i], tx-20, ty);
+    }
+  }
+</script>
+</body>
+</html>
