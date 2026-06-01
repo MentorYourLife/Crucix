@@ -415,7 +415,7 @@ app.post('/api/line/webhook', express.json(), async (req, res) => {
 
 // 中文版儀表板路由
 app.get('/zh', (req, res) => {
-  res.sendFile(join(ROOT, 'dashboard/public/cuitian.html'));
+  res.sendFile(join(ROOT, 'dashboard/public/os_index.html'));
 });
 
 // ☯ 靜觀 · 八字命理分析頁面
@@ -591,6 +591,42 @@ async function runSweepCycle() {
   }
 }
 
+// === Intelligence Scraper (HackerNews AI) ===
+async function runAINewsScraper() {
+  if (!lineAlerter?.isConfigured) return;
+  console.log('[Crucix] 背景啟動：抓取 AI 科技情報...');
+  try {
+    const res = await fetch('https://hn.algolia.com/api/v1/search?query=AI&tags=story&hitsPerPage=5');
+    const data = await res.json();
+    const hits = data.hits || [];
+    if (!hits.length) return;
+    
+    const newsText = hits.map(h => `- 標題: ${h.title}\n  連結: ${h.url}\n  分數: ${h.points}`).join('\n\n');
+    
+    console.log('[Crucix] 呼叫本地 LLM 進行戰略翻譯與總結...');
+    const systemPrompt = `你是淬天情報中心的 AI 戰略分析師。請將以下最新的 AI 科技新聞，翻譯並總結成繁體中文的「戰略簡報」。語氣要專業、簡潔、直接，條列出 3-5 個核心要點。`;
+    
+    let summaryText = "";
+    if (llmProvider && llmProvider.isConfigured) {
+      try {
+        const result = await llmProvider.complete(systemPrompt, newsText, { maxTokens: 1000 });
+        summaryText = result.text;
+      } catch (e) {
+        console.error('[Crucix] LLM summary failed:', e.message);
+        summaryText = `⚠️ 系統提示：本地 LLM 處理失敗。\n\n原始新聞：\n` + hits.map(h => `• ${h.title}`).join('\n');
+      }
+    } else {
+      summaryText = `⚠️ 系統提示：本地 LLM 未配置。\n\n原始新聞：\n` + hits.map(h => `• ${h.title}`).join('\n');
+    }
+
+    const pushMsg = `🤖 淬天 AI 情報雷達\n━━━━━━━━━━━━━━\n${summaryText.trim()}\n━━━━━━━━━━━━━━\n來源：Hacker News (AI)`;
+    await lineAlerter.push(pushMsg, true);
+    console.log('[Crucix] AI 情報推播完成。');
+  } catch (err) {
+    console.error('[Crucix] 抓取 AI情報 失敗:', err.message);
+  }
+}
+
 // === Startup ===
 async function start() {
   const port = config.port;
@@ -655,6 +691,13 @@ async function start() {
 
     // Schedule recurring sweeps
     setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+
+    // AI 科技情報背景爬蟲排程 (每 6 小時一次)
+    if (lineAlerter.isConfigured) {
+      setInterval(runAINewsScraper, 6 * 60 * 60 * 1000);
+      // 可選：啟動時也抓取一次
+      // runAINewsScraper();
+    }
 
     // ☯ 三段式定時推播排程：07:00 早安 / 13:00 午間 / 19:00 上班前 (台北時間 UTC+8)
     if (lineAlerter.isConfigured) {
